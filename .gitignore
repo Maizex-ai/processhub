@@ -3,6 +3,9 @@
 *.bak
 *.bak-*
 
+# Built extension packages (rebuilt by build-vsix.ps1)
+*.vsix
+
 # OS junk
 .DS_Store
 Thumbs.db

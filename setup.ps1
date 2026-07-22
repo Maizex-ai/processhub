@@ -1,11 +1,13 @@
 # ============================================================================
-#  Markdown preview (MPE) setup for Cursor - for team members.
+#  ProcessHub Markdown Preview - setup for team members.
 #  Run by double-clicking setup.cmd (it launches this script).
+#
 #  What it does:
-#    1) installs the Markdown Preview Enhanced extension (if the cursor CLI exists);
-#    2) copies parser.js and style.less into the profile (%USERPROFILE%\.crossnote);
-#    3) SAFELY merges the required MPE keys into settings.json (keeps your own);
-#    4) adds the Ctrl+Shift+V shortcut to keybindings.json.
+#    1) builds the .vsix package from extension/ (or reuses an existing one);
+#    2) installs it via the official "cursor --install-extension" command
+#       (safe: does not touch other extensions or the extensions registry);
+#    3) SAFELY merges one preview setting into settings.json (keeps your own);
+#    4) adds the Ctrl+Shift+V shortcut for the built-in markdown preview.
 #  Every file that is changed is backed up first (....bak-<timestamp>).
 # ============================================================================
 
@@ -33,59 +35,52 @@ function Read-Jsonc($path){
 }
 
 # --- 0. Paths ---
-$crossnote = Join-Path $env:USERPROFILE ".crossnote"
-$userDir   = Join-Path $env:APPDATA "Cursor\User"
-$settings  = Join-Path $userDir "settings.json"
-$keybinds  = Join-Path $userDir "keybindings.json"
+$userDir  = Join-Path $env:APPDATA "Cursor\User"
+$settings = Join-Path $userDir "settings.json"
+$keybinds = Join-Path $userDir "keybindings.json"
 
-Info "== Markdown preview setup for Cursor =="
+Info "== ProcessHub Markdown Preview setup =="
 
-# --- 1. MPE extension ---
-Info "`n[1/4] Markdown Preview Enhanced extension..."
+# --- 1. Build the .vsix package ---
+Info "`n[1/4] Building the extension package (.vsix)..."
+$vsix = $null
+try {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root "build-vsix.ps1") | Out-Host
+    $vsix = Get-ChildItem $root -Filter "*.vsix" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+} catch {
+    Warn "  Build failed: $($_.Exception.Message)"
+}
+if (-not $vsix) {
+    # fall back to a prebuilt package shipped with the folder, if any
+    $vsix = Get-ChildItem $root -Filter "*.vsix" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+}
+if ($vsix) { Ok ("  Package: " + $vsix.Name) } else { Warn "  No .vsix package available." }
+
+# --- 2. Install the extension ---
+Info "`n[2/4] Installing the extension..."
 $cursorCli = Get-Command cursor -ErrorAction SilentlyContinue
-if ($cursorCli) {
-    # Native CLI may write to stderr; do not let strict mode turn that into a throw.
+if ($vsix -and $cursorCli) {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    $installed = @()
-    try { $installed = & cursor --list-extensions 2>$null } catch {}
-    if ($installed -contains "shd101wyy.markdown-preview-enhanced") {
-        Ok "  Extension already installed."
+    & cursor --install-extension $vsix.FullName 2>&1 | Out-Host
+    if ($LASTEXITCODE -eq 0) {
+        Ok "  Extension installed."
     } else {
-        & cursor --install-extension shd101wyy.markdown-preview-enhanced 2>&1 | Out-Host
-        if ($LASTEXITCODE -eq 0) {
-            Ok "  Extension installed/updated."
-        } else {
-            Warn "  Could not install via CLI (exit $LASTEXITCODE). Install manually: 'Markdown Preview Enhanced'."
-        }
+        Warn "  CLI install failed (exit $LASTEXITCODE)."
+        Warn "  Install manually: Ctrl+Shift+P -> 'Extensions: Install from VSIX...' -> pick $($vsix.Name)"
     }
     $ErrorActionPreference = $prev
-} else {
+} elseif ($vsix) {
     Warn "  'cursor' CLI not found in PATH."
-    Warn "  Install manually: Extensions -> find 'Markdown Preview Enhanced' -> Install."
+    Warn "  Install manually: Ctrl+Shift+P -> 'Extensions: Install from VSIX...' -> pick $($vsix.Name)"
+} else {
+    Warn "  Skipped (no package)."
 }
 
-# --- 2. parser.js + style.less ---
-Info "`n[2/4] Styles and parser (.crossnote)..."
-if (-not (Test-Path $crossnote)) { New-Item -ItemType Directory -Force -Path $crossnote | Out-Null }
-foreach ($f in @("parser.js","style.less","head.html")) {
-    $src = Join-Path $root "crossnote\$f"
-    $dst = Join-Path $crossnote $f
-    if (-not (Test-Path $src)) { Warn "  Missing master $src - skip"; continue }
-    if (Test-Path $dst) { Copy-Item $dst "$dst.bak-$stamp" -Force }
-    Copy-Item $src $dst -Force
-    Ok "  $f -> $dst"
-}
-
-# --- 3. settings.json (merge keys, keep personal ones) ---
-Info "`n[3/4] MPE settings (settings.json)..."
+# --- 3. settings.json (merge one key, keep personal ones) ---
+Info "`n[3/4] Preview settings (settings.json)..."
 $desired = [ordered]@{
-    "markdown-preview-enhanced.plantumlServer"             = "https://www.plantuml.com/plantuml"
-    "markdown-preview-enhanced.mermaidTheme"               = "dark"
-    "markdown-preview-enhanced.enableScriptExecution"      = $true
-    "markdown-preview-enhanced.frontMatterRenderingOption" = "none"
-    "markdown-preview-enhanced.previewTheme"               = "vscode.css"
-    "markdown-preview-enhanced.enablePreviewZenMode"       = $true
+    "markdown.preview.frontMatter" = "show"
 }
 if (-not (Test-Path $userDir)) { New-Item -ItemType Directory -Force -Path $userDir | Out-Null }
 try {
@@ -99,18 +94,14 @@ try {
         $obj | Add-Member -NotePropertyName $k -NotePropertyValue $desired[$k] -Force
     }
     Write-Utf8NoBom $settings ($obj | ConvertTo-Json -Depth 30)
-    Ok "  MPE settings added (personal ones kept; backup next to file)."
+    Ok "  Setting merged (personal ones kept; backup next to file)."
 } catch {
     Warn "  Could not edit settings.json automatically (non-standard format?)."
     Warn "  Reason: $($_.Exception.Message)"
-    Warn "  Add these keys to settings.json manually:"
-    foreach ($k in $desired.Keys) {
-        $v = $desired[$k]; if ($v -is [bool]) { $v = $v.ToString().ToLower() } else { $v = '"' + $v + '"' }
-        Warn ('    "' + $k + '": ' + $v)
-    }
+    Warn '  Add manually:  "markdown.preview.frontMatter": "show"'
 }
 
-# --- 4. keybindings.json (Ctrl+Shift+V -> MPE preview) ---
+# --- 4. keybindings.json (Ctrl+Shift+V -> built-in markdown preview) ---
 Info "`n[4/4] Keyboard shortcut (keybindings.json)..."
 try {
     $arr = @()
@@ -119,17 +110,22 @@ try {
         $parsed = Read-Jsonc $keybinds
         if ($parsed) { $arr = @($parsed) }
     }
+    # drop old MPE binding if present, keep everything else
+    $arr = @($arr | Where-Object { $_.command -ne "markdown-preview-enhanced.openPreviewToTheSide" })
     $hasPreview = $false
-    foreach ($e in $arr) { if ($e.command -eq "markdown-preview-enhanced.openPreviewToTheSide") { $hasPreview = $true } }
+    foreach ($e in $arr) { if ($e.command -eq "markdown.showPreviewToSide") { $hasPreview = $true } }
     if (-not $hasPreview) {
-        $arr += [pscustomobject]@{ key="ctrl+shift+v"; command="-frontMatter.insertSnippet" }
-        $arr += [pscustomobject]@{ key="ctrl+shift+v"; command="markdown-preview-enhanced.openPreviewToTheSide"; when="editorLangId =~ /^(markdown|quarto)$/" }
+        $hasUnbind = $false
+        foreach ($e in $arr) { if ($e.command -eq "-frontMatter.insertSnippet") { $hasUnbind = $true } }
+        if (-not $hasUnbind) {
+            $arr += [pscustomobject]@{ key="ctrl+shift+v"; command="-frontMatter.insertSnippet" }
+        }
+        $arr += [pscustomobject]@{ key="ctrl+shift+v"; command="markdown.showPreviewToSide"; when="editorLangId == 'markdown' && !notebookEditorFocused" }
     }
     $kbJson = @($arr) | ConvertTo-Json -Depth 30
-    if ($kbJson.TrimStart() -notlike '[*') { $kbJson = "[`n$kbJson`n]" }
+    if (-not $kbJson.TrimStart().StartsWith('[')) { $kbJson = "[`n$kbJson`n]" }
     Write-Utf8NoBom $keybinds $kbJson
-    if ($hasPreview) { Ok "  Ctrl+Shift+V already configured." }
-    else { Ok "  Ctrl+Shift+V -> open MPE preview." }
+    Ok "  Ctrl+Shift+V -> built-in markdown preview."
 } catch {
     Warn "  Could not edit keybindings.json automatically - not critical."
     Warn "  Reason: $($_.Exception.Message)"
