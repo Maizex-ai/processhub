@@ -316,7 +316,8 @@ a[data-href*=".md#"]::before {
   padding-left: 2px;
   margin: 0;
 }
-.doc-toc .doc-toc-list ul {
+.doc-toc .doc-toc-list ul,
+.doc-toc .doc-toc-list ol {
   list-style: none;
   padding-left: 16px;
   margin: 0;

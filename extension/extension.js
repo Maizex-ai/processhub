@@ -167,10 +167,23 @@ function diagramHtml(url, kind) {
   );
 }
 
+// Базовый skinparam для не-UML диаграмм (mindmap, gantt, salt и т.п.):
+// только универсальные параметры, специфичные для sequence/class не шлём.
+const PUML_SKIN_BASIC = `skinparam backgroundColor transparent
+skinparam shadowing false
+skinparam defaultFontColor #d4d4d4
+skinparam ArrowColor #9aa4b2
+skinparam lineColor #9aa4b2
+`;
+
 function renderPlantUml(code) {
   let body = code.trim();
   if (/@startuml/.test(body)) {
     body = body.replace(/@startuml[^\n]*/, (m) => m + '\n' + PUML_SKIN);
+  } else if (/@start\w+/.test(body)) {
+    // Другие типы (@startmindmap, @startgantt, ...) — не оборачиваем в
+    // @startuml (это ломает синтаксис), инжектим только базовую тему.
+    body = body.replace(/@start\w+[^\n]*/, (m) => m + '\n' + PUML_SKIN_BASIC);
   } else {
     body = '@startuml\n' + PUML_SKIN + body + '\n@enduml';
   }
@@ -206,29 +219,43 @@ function slugify(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
 
+function chipsHtml(items) {
+  return items
+    .map((i) => '<span class="fm-chip">' + esc(i) + '</span>')
+    .join('');
+}
+
 function renderFrontMatterPanel(fm) {
   let rows = '';
-  for (const line of fm.split('\n')) {
-    const m = line.match(/^([A-Za-z0-9_\- ]+):\s*(.*)$/);
+  const lines = fm.split('\n');
+  for (let idx = 0; idx < lines.length; idx++) {
+    const m = lines[idx].match(/^([A-Za-z0-9_\- ]+):\s*(.*)$/);
     if (!m) continue;
     const key = m[1].trim();
     const raw = unquote(m[2]);
     let valueHtml;
     const cfg = BADGE_FIELDS[key.toLowerCase()];
-    if (cfg) {
+    if (raw === '') {
+      // Блочный YAML-список:  key:\n  - a\n  - b
+      const items = [];
+      let n = idx + 1;
+      while (n < lines.length && /^\s+-\s+/.test(lines[n])) {
+        items.push(unquote(lines[n].replace(/^\s+-\s+/, '')));
+        n++;
+      }
+      if (!items.length) continue; // пустое значение — строку не рисуем
+      idx = n - 1;
+      valueHtml = chipsHtml(items);
+    } else if (cfg) {
       const dot = cfg.dot ? '<span class="fm-dot"></span>' : '';
       const base = cfg.base ? cfg.base + ' ' : '';
       valueHtml =
         '<span class="fm-badge ' + base + cfg.prefix + slugify(raw) + '">' +
         dot + esc(raw) + '</span>';
     } else if (/^\[.*\]$/.test(raw)) {
-      valueHtml = raw
-        .slice(1, -1)
-        .split(',')
-        .map((s) => unquote(s))
-        .filter(Boolean)
-        .map((i) => '<span class="fm-chip">' + esc(i) + '</span>')
-        .join('');
+      valueHtml = chipsHtml(
+        raw.slice(1, -1).split(',').map((s) => unquote(s)).filter(Boolean)
+      );
     } else {
       valueHtml = '<span class="fm-val">' + esc(raw) + '</span>';
     }
@@ -292,19 +319,23 @@ function tocRule(state) {
       if (t[m].type === 'heading_open') { end = m; break; }
     }
 
-    // Контент TOC: маркированный список ИЛИ абзац ссылок
+    // Контент TOC: маркированный/нумерованный список ИЛИ абзац ссылок
     // (формат "строки-ссылки с жёсткими переносами", часто обрамлён "---").
+    const isListOpen = (tt) =>
+      tt === 'bullet_list_open' || tt === 'ordered_list_open';
+    const isListClose = (tt) =>
+      tt === 'bullet_list_close' || tt === 'ordered_list_close';
     let j = -1;
     let k = -1;
     let isList = false;
     for (let m = i + 3; m < end; m++) {
-      if (t[m].type === 'bullet_list_open') {
+      if (isListOpen(t[m].type)) {
         isList = true;
         j = m;
         let depth = 0;
         for (k = m; k < end; k++) {
-          if (t[k].type === 'bullet_list_open') depth++;
-          else if (t[k].type === 'bullet_list_close') {
+          if (isListOpen(t[k].type)) depth++;
+          else if (isListClose(t[k].type)) {
             depth--;
             if (depth === 0) break;
           }
