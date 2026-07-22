@@ -285,25 +285,57 @@ function tocRule(state) {
     ) {
       continue;
     }
-    // Ищем список сразу после заголовка (до следующего заголовка).
-    let j = i + 3;
-    while (j < t.length && t[j].type !== 'bullet_list_open') {
-      if (t[j].type === 'heading_open') { j = -1; break; }
-      j++;
+
+    // Граница секции — следующий заголовок (или конец документа).
+    let end = t.length;
+    for (let m = i + 3; m < t.length; m++) {
+      if (t[m].type === 'heading_open') { end = m; break; }
     }
-    if (j < 0 || j >= t.length) return;
-    let depth = 0;
-    let k = j;
-    for (; k < t.length; k++) {
-      if (t[k].type === 'bullet_list_open') depth++;
-      else if (t[k].type === 'bullet_list_close') {
-        depth--;
-        if (depth === 0) break;
+
+    // Контент TOC: маркированный список ИЛИ абзац ссылок
+    // (формат "строки-ссылки с жёсткими переносами", часто обрамлён "---").
+    let j = -1;
+    let k = -1;
+    let isList = false;
+    for (let m = i + 3; m < end; m++) {
+      if (t[m].type === 'bullet_list_open') {
+        isList = true;
+        j = m;
+        let depth = 0;
+        for (k = m; k < end; k++) {
+          if (t[k].type === 'bullet_list_open') depth++;
+          else if (t[k].type === 'bullet_list_close') {
+            depth--;
+            if (depth === 0) break;
+          }
+        }
+        break;
+      }
+      if (
+        t[m].type === 'paragraph_open' &&
+        t[m + 1] &&
+        t[m + 1].type === 'inline' &&
+        (t[m + 1].children || []).some((c) => c.type === 'link_open')
+      ) {
+        j = m;
+        k = m + 2; // paragraph_close
+        break;
       }
     }
-    if (k >= t.length) return;
+    if (j < 0 || k < 0 || k >= end) continue;
+
+    // Убираем "---" (hr) вокруг содержания — внутри карточки они не нужны.
+    for (let m = end - 1; m >= i + 3; m--) {
+      if (t[m].type === 'hr' && (m < j || m > k)) {
+        t.splice(m, 1);
+        if (m < j) { j--; k--; }
+        end--;
+      }
+    }
+
     t[i].attrJoin('class', 'doc-toc-title');
-    t[j].attrJoin('class', 'doc-toc-list');
+    t[j].attrJoin('class', isList ? 'doc-toc-list' : 'doc-toc-list doc-toc-para');
+
     const open = new state.Token('html_block', '', 0);
     open.content = '<nav class="doc-toc">\n';
     const close = new state.Token('html_block', '', 0);

@@ -352,6 +352,28 @@ a[data-href*=".md#"]::before {
   color: #e6eaf2;
   background: rgba(128, 128, 128, 0.16);
 }
+/* Вариант TOC-абзаца: ссылки с жёсткими переносами вместо списка. */
+.doc-toc p.doc-toc-para {
+  margin: 0;
+}
+.doc-toc .doc-toc-para a {
+  position: relative;
+  padding-left: 14px;
+  margin: 2px 0;
+}
+.doc-toc .doc-toc-para a::before {
+  content: "";
+  display: block;
+  position: absolute;
+  left: 2px;
+  top: 0.72em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(140, 148, 166, 0.7);
+  -webkit-mask: none;
+  mask: none;
+}
 
 /* --- Инлайн-код: жёлтый текст на лёгкой плашке --- */
 :not(pre) > code {
