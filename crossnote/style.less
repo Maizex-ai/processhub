@@ -439,9 +439,11 @@
 
   /* --- Диаграммы (Mermaid + PlantUML): единая тёмная подложка --- */
   /* Mermaid рисует dark-тему (setting mermaidTheme: dark).
-     PlantUML приходит картинкой с сервера — красим её через parser.js (skinparam). */
+     PlantUML приходит SVG с сервера — красим через parser.js (skinparam).
+     Реальную карточку и кнопку "раскрыть" вешает скрипт из parser.js:
+     он оборачивает диаграмму в .diag-host (см. ниже). Базовые правила тут —
+     на случай, если скрипт ещё не отработал / выключен. */
   .mermaid,
-  p:has(> img[src*="plantuml"]),
   .plantuml,
   pre.mume-plantuml {
     background: #1e1e1e;
@@ -453,8 +455,38 @@
     overflow: auto;
   }
   .mermaid svg,
-  p:has(> img[src*="plantuml"]) img,
-  .plantuml img {
+  .plantuml img,
+  .plantuml svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Карточка-обёртка диаграммы (создаётся скриптом parser.js). */
+  .diag-host {
+    position: relative;
+    background: #1e1e1e;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 10px;
+    padding: 16px;
+    margin: 18px 0;
+    text-align: center;
+    overflow: hidden;
+  }
+  /* Внутри обёртки убираем двойную карточку и ужимаем диаграмму по ширине. */
+  .diag-host > .mermaid,
+  .diag-host > .plantuml,
+  .diag-host > pre.mume-plantuml,
+  .diag-host > p {
+    background: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    overflow: visible;
+  }
+  .diag-host img,
+  .diag-host svg,
+  .diag-host .mermaid svg {
     max-width: 100%;
     height: auto;
   }
@@ -482,9 +514,6 @@
 }
 
 /* --- Кнопка "раскрыть" в углу диаграммы --- */
-.diag-host {
-  position: relative;
-}
 .diag-expand {
   position: absolute;
   top: 12px;

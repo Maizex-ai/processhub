@@ -211,7 +211,6 @@
   if (window.__mpeDiagZoom) return;
   window.__mpeDiagZoom = true;
 
-  var SEL = '.mermaid, .plantuml, pre.mume-plantuml, p:has(> img[src*="plantuml"])';
   var st = { s:1, tx:0, ty:0, drag:false, lx:0, ly:0 };
   var overlay, stage, content;
 
@@ -268,12 +267,44 @@
 
   function inner(box){ return box.querySelector('svg') || box.querySelector('img') || box; }
 
+  function root(){ return document.querySelector('.markdown-preview') || document.body; }
+
+  // Находим диаграммы по факту, не завязываясь на конкретные классы MPE:
+  //  1) блоки Mermaid (.mermaid);
+  //  2) картинки-диаграммы (PlantUML/Graphviz и т.п.) — <img> с data-URI или "plantuml" в src;
+  //  3) крупные инлайн-<svg> (PlantUML/Graphviz рендерятся инлайном).
+  function collect(){
+    var r = root(), seen = [], out = [];
+    function add(el){ if (el && seen.indexOf(el) < 0) { seen.push(el); out.push(el); } }
+    r.querySelectorAll('.mermaid').forEach(add);
+    r.querySelectorAll('img').forEach(function(img){
+      if (img.closest('.diag-modal') || img.closest('.diag-expand')) return;
+      var s = img.getAttribute('src') || '';
+      if (/plantuml|kroki|graphviz|\\bviz\\b|\\bdot\\b/i.test(s) || /^data:image\\/(svg|png)/i.test(s)) add(img);
+    });
+    r.querySelectorAll('svg').forEach(function(svg){
+      if (svg.closest('.mermaid') || svg.closest('.diag-modal') || svg.closest('.diag-expand')) return;
+      var w = 0; try { w = svg.getBoundingClientRect().width; } catch(e){}
+      if (w >= 100) add(svg);
+    });
+    return out;
+  }
+
+  // Если диаграмма — единственный ребёнок <p>, оборачиваем весь <p>
+  // (иначе <div> внутри <p> ломает разметку).
+  function hostFor(el){
+    var p = el.parentElement;
+    if (p && p.tagName === 'P' && p.children.length === 1) return p;
+    return el;
+  }
+
   function decorate(){
-    var list = document.querySelectorAll(SEL);
+    var list = collect();
     for (var i=0;i<list.length;i++){
-      var box = list[i];
+      var el = list[i];
+      var box = hostFor(el);
       if (box.__diag) continue;
-      if (box.closest && box.closest('.diag-modal')) continue;
+      if (box.closest && (box.closest('.diag-host') || box.closest('.diag-modal'))) continue;
       box.__diag = true;
       var wrap = document.createElement('div');
       wrap.className = 'diag-host';
@@ -284,9 +315,9 @@
       btn.className = 'diag-expand';
       btn.title = 'Раскрыть на весь экран';
       btn.innerHTML = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M8 3H5a2 2 0 0 0-2 2v3'/><path d='M21 8V5a2 2 0 0 0-2-2h-3'/><path d='M3 16v3a2 2 0 0 0 2 2h3'/><path d='M16 21h3a2 2 0 0 0 2-2v-3'/></svg>";
-      (function(bx){
-        btn.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); open(inner(bx)); });
-      })(box);
+      (function(target){
+        btn.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); open(inner(target)); });
+      })(el);
       wrap.appendChild(btn);
     }
   }
