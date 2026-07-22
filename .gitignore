@@ -1,0 +1,9 @@
+# Backups created by setup/restore next to live files (should never land here,
+# but ignore just in case someone copies them in).
+*.bak
+*.bak-*
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
