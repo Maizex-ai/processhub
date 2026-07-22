@@ -1,0 +1,26 @@
+{
+  "name": "processhub-md-preview",
+  "displayName": "ProcessHub Markdown Preview",
+  "description": "Оформление встроенного превью Markdown под стандарты ProcessHub: YAML-панель свойств, тёмные PlantUML/Mermaid с зумом, карточки TOC, стилизованные таблицы и ссылки.",
+  "publisher": "processhub",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "markdown.markdownItPlugins": true,
+    "markdown.previewStyles": [
+      "./media/preview.css"
+    ],
+    "markdown.previewScripts": [
+      "./media/preview.js"
+    ]
+  }
+}
