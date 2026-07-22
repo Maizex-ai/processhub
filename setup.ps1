@@ -68,7 +68,7 @@ if ($cursorCli) {
 # --- 2. parser.js + style.less ---
 Info "`n[2/4] Styles and parser (.crossnote)..."
 if (-not (Test-Path $crossnote)) { New-Item -ItemType Directory -Force -Path $crossnote | Out-Null }
-foreach ($f in @("parser.js","style.less")) {
+foreach ($f in @("parser.js","style.less","head.html")) {
     $src = Join-Path $root "crossnote\$f"
     $dst = Join-Path $crossnote $f
     if (-not (Test-Path $src)) { Warn "  Missing master $src - skip"; continue }

@@ -9,6 +9,7 @@ $root = $PSScriptRoot
 $map = @(
     @{ dst = "crossnote\parser.js";          src = "$env:USERPROFILE\.crossnote\parser.js" },
     @{ dst = "crossnote\style.less";         src = "$env:USERPROFILE\.crossnote\style.less" },
+    @{ dst = "crossnote\head.html";          src = "$env:USERPROFILE\.crossnote\head.html" },
     @{ dst = "cursor-user\settings.json";    src = "$env:APPDATA\Cursor\User\settings.json" },
     @{ dst = "cursor-user\keybindings.json"; src = "$env:APPDATA\Cursor\User\keybindings.json" }
 )

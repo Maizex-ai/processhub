@@ -9,6 +9,7 @@ $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $map = @(
     @{ src = "crossnote\parser.js";          dst = "$env:USERPROFILE\.crossnote\parser.js" },
     @{ src = "crossnote\style.less";         dst = "$env:USERPROFILE\.crossnote\style.less" },
+    @{ src = "crossnote\head.html";          dst = "$env:USERPROFILE\.crossnote\head.html" },
     @{ src = "cursor-user\settings.json";    dst = "$env:APPDATA\Cursor\User\settings.json" },
     @{ src = "cursor-user\keybindings.json"; dst = "$env:APPDATA\Cursor\User\keybindings.json" }
 )
