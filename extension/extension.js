@@ -195,9 +195,30 @@ function isDarkEditorTheme() {
   return true;
 }
 
+// Тема диаграмм: dark | light | auto. По умолчанию dark — единый вид
+// документов ProcessHub независимо от темы редактора у коллеги.
+function useDarkDiagramTheme() {
+  let mode = 'dark';
+  if (vscode) {
+    try {
+      const v = vscode.workspace
+        .getConfiguration('processhubMdPreview')
+        .get('diagramTheme');
+      if (v === 'light' || v === 'auto' || v === 'dark') mode = v;
+    } catch (e) { /* оставляем dark */ }
+  }
+  if (mode === 'light') return false;
+  if (mode === 'auto') return isDarkEditorTheme();
+  return true;
+}
+
+function isPlantUmlLang(info) {
+  return info === 'plantuml' || info === 'puml' || info === 'uml';
+}
+
 function renderPlantUml(code) {
   let body = code.trim();
-  const dark = isDarkEditorTheme();
+  const dark = useDarkDiagramTheme();
   const skinFull = dark ? PUML_SKIN : PUML_SKIN_LIGHT;
   const skinBasic = dark ? PUML_SKIN_BASIC : PUML_SKIN_LIGHT;
   if (/@startuml/.test(body)) {
@@ -217,8 +238,9 @@ function renderPlantUml(code) {
 // сюда кладём исходник в <div class="mermaid">, клиент его отрисует.
 // Текст диаграммы никуда не отправляется, работает офлайн.
 function renderMermaid(code) {
+  const themeClass = useDarkDiagramTheme() ? 'diag-theme-dark' : 'diag-theme-light';
   return (
-    '<div class="diag-host diag-mermaid">' +
+    '<div class="diag-host diag-mermaid ' + themeClass + '">' +
     '<div class="mermaid">' + esc(code.trim()) + '</div>' +
     EXPAND_BTN +
     '</div>\n'
@@ -406,12 +428,37 @@ function tocRule(state) {
 // Точка входа расширения
 // ---------------------------------------------------------------------------
 
+// jebbs.plantuml тоже регистрирует markdown-it плагин и перехватывает
+// ```plantuml / ```puml / ```uml (часто меняет тип токена на "plantuml").
+// Мы переименовываем такие токены в свой тип ph_plantuml — тогда рендерим
+// мы, с нашим сервером и тёмной темой, даже если PlantUML-расширение установлено.
+function claimPlantUmlTokens(state) {
+  const tokens = state.tokens;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type === 'plantuml') {
+      t.type = 'ph_plantuml';
+      continue;
+    }
+    if (t.type !== 'fence') continue;
+    const info = (t.info || '').trim().split(/\s+/)[0].toLowerCase();
+    if (isPlantUmlLang(info)) t.type = 'ph_plantuml';
+  }
+}
+
 function activate() {
   return {
     extendMarkdownIt(md) {
       md.block.ruler.before('table', 'ph_front_matter', frontMatterRule);
       md.renderer.rules.ph_front_matter = (tokens, idx) =>
         renderFrontMatterPanel(tokens[idx].content);
+
+      md.renderer.rules.ph_plantuml = (tokens, idx) =>
+        renderPlantUml(tokens[idx].content);
+      // На случай, если чужой плагин оставит тип "plantuml" и наш core-rule
+      // ещё не успел отработать (или был перезаписан) — рендерим и его.
+      md.renderer.rules.plantuml = (tokens, idx) =>
+        renderPlantUml(tokens[idx].content);
 
       const defaultFence =
         md.renderer.rules.fence ||
@@ -421,7 +468,7 @@ function activate() {
       md.renderer.rules.fence = function (tokens, idx, options, env, self) {
         const token = tokens[idx];
         const info = (token.info || '').trim().split(/\s+/)[0].toLowerCase();
-        if (info === 'plantuml' || info === 'puml') {
+        if (isPlantUmlLang(info)) {
           return renderPlantUml(token.content);
         }
         if (info === 'mermaid') {
@@ -442,6 +489,8 @@ function activate() {
         return defaultFence(tokens, idx, options, env, self);
       };
 
+      // Поздно в пайплайне: забираем токены у jebbs.plantuml (и аналогов).
+      md.core.ruler.push('ph_plantuml_claim', claimPlantUmlTokens);
       md.core.ruler.push('ph_doc_toc', tocRule);
       return md;
     },

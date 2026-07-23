@@ -9,14 +9,17 @@
   // --- Локальный рендер Mermaid (библиотека media/mermaid.min.js) ---
   // Тёмная тема задаётся здесь; %%{init}%% в самой диаграмме имеет приоритет.
   var mermaidReady = false;
-  function isLightTheme() {
+  function preferLightMermaid() {
+    // Класс с сервера (настройка diagramTheme) важнее темы редактора.
+    if (document.querySelector('.diag-mermaid.diag-theme-light')) return true;
+    if (document.querySelector('.diag-mermaid.diag-theme-dark')) return false;
     var c = document.body.classList;
     return c.contains('vscode-light') || c.contains('vscode-high-contrast-light');
   }
   function runMermaid() {
     if (typeof mermaid === 'undefined') return;
     if (!mermaidReady) {
-      mermaid.initialize(isLightTheme()
+      mermaid.initialize(preferLightMermaid()
         ? { startOnLoad: false, theme: 'default' }
         : {
             startOnLoad: false,

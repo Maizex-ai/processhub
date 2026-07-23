@@ -3,7 +3,7 @@
   "displayName": "ProcessHub Markdown Preview",
   "description": "Оформление встроенного превью Markdown под стандарты ProcessHub: YAML-панель свойств, тёмные PlantUML/Mermaid с зумом, карточки TOC, стилизованные таблицы и ссылки.",
   "publisher": "processhub",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "engines": {
     "vscode": "^1.70.0"
   },
@@ -33,6 +33,12 @@
           "type": "string",
           "default": "https://www.plantuml.com/plantuml",
           "description": "Адрес PlantUML-сервера для рендера диаграмм (без завершающего /). Для приватности укажите внутренний сервер команды, например http://plantuml.local:8080."
+        },
+        "processhubMdPreview.diagramTheme": {
+          "type": "string",
+          "enum": ["dark", "light", "auto"],
+          "default": "dark",
+          "description": "Тема диаграмм PlantUML/Mermaid в превью. dark — всегда тёмная (рекомендуется для документов ProcessHub); light — всегда светлая; auto — как тема редактора."
         }
       }
     }
