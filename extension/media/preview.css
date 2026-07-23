@@ -400,6 +400,27 @@ a[data-href*=".md#"]::before {
   height: auto;
   display: inline-block;
 }
+/* Локальный Mermaid: до отрисовки в блоке лежит исходник — прячем перенос,
+   после отрисовки внутри появляется svg. */
+.diag-host .mermaid {
+  display: inline-block;
+  max-width: 100%;
+  text-align: center;
+  color: #d4d4d4;
+}
+.diag-host .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+/* Подписи связей — тёмный фон, чтобы текст читался поверх линий. */
+.diag-host .mermaid .edgeLabel,
+.diag-host .mermaid .edgeLabel p {
+  background-color: #1e1e1e !important;
+  color: #d4d4d4 !important;
+}
+.diag-host .mermaid .edgeLabel rect {
+  fill: #1e1e1e !important;
+}
 .diag-expand {
   position: absolute;
   top: 12px;

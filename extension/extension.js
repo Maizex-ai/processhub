@@ -2,13 +2,19 @@
 // Работает через официальные точки расширения markdown-language-features:
 //   - extendMarkdownIt: рендер YAML-шапки, PlantUML, Mermaid, TOC-карточки;
 //   - media/preview.css: все стили превью;
-//   - media/preview.js: модалка зума диаграмм (кнопка рендерится прямо в HTML).
-// Диаграммы кодируются на стороне extension host (Node, есть zlib) и
-// отдаются серверами plantuml.com / kroki.io как SVG-картинки.
+//   - media/mermaid.min.js: локальный Mermaid — рендер в превью, без сети;
+//   - media/preview.js: запуск Mermaid + модалка зума диаграмм.
+// Mermaid рендерится локально (библиотека в составе расширения). PlantUML
+// кодируется на стороне extension host (Node, есть zlib) и отдаётся
+// PlantUML-сервером как SVG; адрес сервера настраивается.
 
 'use strict';
 
 const zlib = require('zlib');
+
+// vscode доступен в extension host; страхуемся на случай юнит-тестов вне IDE.
+let vscode = null;
+try { vscode = require('vscode'); } catch (e) { /* не в extension host */ }
 
 // ---------------------------------------------------------------------------
 // Кодировщики URL диаграмм
@@ -31,15 +37,6 @@ function encodePlantUml(text) {
     out += PUML_ALPHABET[b3 & 0x3f];
   }
   return out;
-}
-
-// Kroki (Mermaid и др.): zlib deflate + base64url.
-function encodeKroki(text) {
-  return zlib
-    .deflateSync(Buffer.from(text, 'utf8'), { level: 9 })
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
 }
 
 // ---------------------------------------------------------------------------
@@ -128,15 +125,20 @@ skinparam sequence {
 }
 `;
 
-const PLANTUML_SERVER = 'https://www.plantuml.com/plantuml';
+const PLANTUML_SERVER_DEFAULT = 'https://www.plantuml.com/plantuml';
 
-// Тёмная тема Mermaid — init-директива, если автор не задал свою.
-const MERMAID_INIT =
-  '%%{init: {"theme":"dark","themeVariables":{"darkMode":true,' +
-  '"background":"#1e1e1e","primaryColor":"#2a2d2e",' +
-  '"primaryTextColor":"#d4d4d4","primaryBorderColor":"#5a5d5e",' +
-  '"lineColor":"#9aa4b2","secondaryColor":"#2a2d2e",' +
-  '"tertiaryColor":"#252627"}}}%%';
+// Адрес PlantUML-сервера — из настройки (можно указать свой/внутренний сервер).
+function plantUmlServer() {
+  if (vscode) {
+    try {
+      const v = vscode.workspace
+        .getConfiguration('processhubMdPreview')
+        .get('plantumlServer');
+      if (v && typeof v === 'string') return v.replace(/\/+$/, '');
+    } catch (e) { /* конфигурация недоступна — используем дефолт */ }
+  }
+  return PLANTUML_SERVER_DEFAULT;
+}
 
 // ---------------------------------------------------------------------------
 // HTML-хелперы
@@ -187,17 +189,20 @@ function renderPlantUml(code) {
   } else {
     body = '@startuml\n' + PUML_SKIN + body + '\n@enduml';
   }
-  const url = PLANTUML_SERVER + '/svg/' + encodePlantUml(body);
+  const url = plantUmlServer() + '/svg/' + encodePlantUml(body);
   return diagramHtml(url, 'plantuml');
 }
 
+// Mermaid рендерится ЛОКАЛЬНО в превью (media/mermaid.min.js + preview.js):
+// сюда кладём исходник в <div class="mermaid">, клиент его отрисует.
+// Текст диаграммы никуда не отправляется, работает офлайн.
 function renderMermaid(code) {
-  let body = code.trim();
-  if (!/^\s*%%\{\s*init/.test(body)) {
-    body = MERMAID_INIT + '\n' + body;
-  }
-  const url = 'https://kroki.io/mermaid/svg/' + encodeKroki(body);
-  return diagramHtml(url, 'mermaid');
+  return (
+    '<div class="diag-host diag-mermaid">' +
+    '<div class="mermaid">' + esc(code.trim()) + '</div>' +
+    EXPAND_BTN +
+    '</div>\n'
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,45 @@
   if (window.__phDiagZoom) return;
   window.__phDiagZoom = true;
 
+  // --- Локальный рендер Mermaid (библиотека media/mermaid.min.js) ---
+  // Тёмная тема задаётся здесь; %%{init}%% в самой диаграмме имеет приоритет.
+  var mermaidReady = false;
+  function runMermaid() {
+    if (typeof mermaid === 'undefined') return;
+    if (!mermaidReady) {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'dark',
+        themeVariables: {
+          darkMode: true,
+          background: '#1e1e1e',
+          primaryColor: '#2a2d2e',
+          primaryTextColor: '#d4d4d4',
+          primaryBorderColor: '#5a5d5e',
+          lineColor: '#9aa4b2',
+          secondaryColor: '#2a2d2e',
+          tertiaryColor: '#252627'
+        }
+      });
+      mermaidReady = true;
+    }
+    var nodes = document.querySelectorAll(
+      '.diag-mermaid .mermaid:not([data-processed])'
+    );
+    if (nodes.length) {
+      // При синтаксической ошибке Mermaid сам рисует сообщение в блоке.
+      mermaid.run({ nodes: nodes }).catch(function () {});
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', runMermaid);
+  } else {
+    runMermaid();
+  }
+  // Встроенное превью обновляет контент без перезагрузки скриптов —
+  // это официальное событие для дорисовки после обновления.
+  window.addEventListener('vscode.markdown.updateContent', runMermaid);
+
   var overlay = null, stage = null, content = null;
   var st = { s: 1, tx: 0, ty: 0, drag: false, lx: 0, ly: 0 };
 
