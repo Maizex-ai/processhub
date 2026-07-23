@@ -454,6 +454,75 @@ a[data-href*=".md#"]::before {
   margin: 18px 0;
   text-align: center;
 }
+/* Inline pan/zoom: область просмотра + холст с transform */
+.diag-viewport {
+  position: relative;
+  overflow: hidden;
+  max-height: min(70vh, 560px);
+  min-height: 120px;
+  resize: vertical;
+  cursor: grab;
+  border-radius: 6px;
+  touch-action: none;
+}
+.diag-viewport.grabbing { cursor: grabbing; }
+.diag-canvas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  transform-origin: center center;
+  will-change: transform;
+  user-select: none;
+}
+.diag-host .diag-img,
+.diag-canvas img,
+.diag-canvas svg {
+  max-width: 100%;
+  height: auto;
+  display: inline-block;
+  pointer-events: none;
+}
+/* Панель управления: появляется при наведении */
+.diag-nav {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: rgba(40, 42, 46, 0.92);
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.diag-host:hover .diag-nav,
+.diag-host:focus-within .diag-nav {
+  opacity: 1;
+  pointer-events: auto;
+}
+.diag-nav button {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #cfd4dc;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.diag-nav button:hover {
+  background: rgba(128, 128, 128, 0.25);
+  color: #fff;
+}
 .diag-host .diag-img {
   max-width: 100%;
   height: auto;
@@ -498,28 +567,33 @@ a[data-href*=".md#"]::before {
 .diag-host .mermaid .edgeLabel rect {
   fill: var(--ph-diag-bg) !important;
 }
+/* Кнопка fullscreen: в панели .diag-nav или отдельно (до enhance) */
 .diag-expand {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 3;
   width: 28px;
   height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  background: rgba(40, 42, 46, 0.85);
-  border: 1px solid rgba(128, 128, 128, 0.3);
+  background: transparent;
+  border: none;
   border-radius: 6px;
   color: #cfd4dc;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
-.diag-host:hover .diag-expand { opacity: 1; }
+.diag-expand:not(.diag-expand--in-nav) {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  background: rgba(40, 42, 46, 0.85);
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.diag-host:hover .diag-expand:not(.diag-expand--in-nav) { opacity: 1; }
 .diag-expand:hover {
-  background: rgba(60, 63, 68, 0.95);
+  background: rgba(128, 128, 128, 0.25);
   color: #fff;
 }
 .diag-expand svg {
@@ -546,20 +620,26 @@ a[data-href*=".md#"]::before {
   justify-content: center;
   overflow: hidden;
   cursor: grab;
+  touch-action: none;
 }
 .diag-modal__stage.grabbing { cursor: grabbing; }
 .diag-modal__content {
   transform-origin: center center;
   will-change: transform;
   user-select: none;
+  background: transparent;
 }
+/* Как у Mermaid: диаграмма без своей подложки — читается на фоне модалки.
+   PlantUML уже с skinparam backgroundColor transparent. */
 .diag-modal__content svg,
-.diag-modal__content img {
+.diag-modal__content img,
+.diag-modal__content .mermaid {
   display: block;
   max-width: none;
   height: auto;
-  background: var(--ph-diag-bg);
-  border-radius: 8px;
+  background: transparent !important;
+  border-radius: 0;
+  box-shadow: none;
 }
 .diag-modal__bar {
   position: absolute;
