@@ -9,23 +9,29 @@
   // --- Локальный рендер Mermaid (библиотека media/mermaid.min.js) ---
   // Тёмная тема задаётся здесь; %%{init}%% в самой диаграмме имеет приоритет.
   var mermaidReady = false;
+  function isLightTheme() {
+    var c = document.body.classList;
+    return c.contains('vscode-light') || c.contains('vscode-high-contrast-light');
+  }
   function runMermaid() {
     if (typeof mermaid === 'undefined') return;
     if (!mermaidReady) {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: 'dark',
-        themeVariables: {
-          darkMode: true,
-          background: '#1e1e1e',
-          primaryColor: '#2a2d2e',
-          primaryTextColor: '#d4d4d4',
-          primaryBorderColor: '#5a5d5e',
-          lineColor: '#9aa4b2',
-          secondaryColor: '#2a2d2e',
-          tertiaryColor: '#252627'
-        }
-      });
+      mermaid.initialize(isLightTheme()
+        ? { startOnLoad: false, theme: 'default' }
+        : {
+            startOnLoad: false,
+            theme: 'dark',
+            themeVariables: {
+              darkMode: true,
+              background: '#1e1e1e',
+              primaryColor: '#2a2d2e',
+              primaryTextColor: '#d4d4d4',
+              primaryBorderColor: '#5a5d5e',
+              lineColor: '#9aa4b2',
+              secondaryColor: '#2a2d2e',
+              tertiaryColor: '#252627'
+            }
+          });
       mermaidReady = true;
     }
     var nodes = document.querySelectorAll(

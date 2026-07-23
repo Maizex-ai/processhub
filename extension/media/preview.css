@@ -1,5 +1,64 @@
 /* ProcessHub Markdown Preview — стили встроенного превью.
-   Портировано из .crossnote/style.less (MPE), развёрнуто в плоский CSS. */
+   Портировано из .crossnote/style.less (MPE), развёрнуто в плоский CSS.
+
+   Палитра — в CSS-переменных: дефолт (на body) — тёмная тема,
+   body.vscode-light / .vscode-high-contrast-light переопределяют её светлой.
+   Серые rgba(128,128,128,…) читаются на любом фоне и остаются литералами. */
+
+body {
+  /* текст */
+  --ph-text: rgba(246, 246, 246, 0.8);
+  --ph-heading: rgba(246, 246, 246, 0.92);
+  --ph-muted: #8a94a6;
+  --ph-key: rgba(246, 246, 246, 0.76);
+  /* инлайн-код и ссылки-чипы */
+  --ph-code-bg: rgba(246, 246, 246, 0.06);
+  --ph-code-fg: rgba(255, 223, 78, 0.92);
+  --ph-link-bg: rgba(246, 246, 246, 0.06);
+  --ph-link-bg-hover: rgba(246, 246, 246, 0.1);
+  --ph-link-fg: rgba(0, 212, 146, 0.92);
+  /* TOC */
+  --ph-toc-link: #b9c0cc;
+  --ph-toc-link-hover: #e6eaf2;
+  /* диаграммы */
+  --ph-diag-bg: #1e1e1e;
+  --ph-diag-text: #d4d4d4;
+  /* бейджи */
+  --ph-badge-gray: #b9c0cc;
+  --ph-badge-released: #79d199;
+  --ph-stage-l1: #9db4de;
+  --ph-stage-l2: #b6c9ec;
+  --ph-stage-l3: #d3e0f8;
+  --ph-aud-client: #e0b878;
+  --ph-aud-team: #8fc0e8;
+  --ph-aud-agent: #c0a4e6;
+  --ph-class: #8fd0cf;
+}
+body.vscode-light,
+body.vscode-high-contrast-light {
+  --ph-text: rgba(20, 20, 20, 0.85);
+  --ph-heading: rgba(0, 0, 0, 0.88);
+  --ph-muted: #6b7280;
+  --ph-key: rgba(0, 0, 0, 0.65);
+  --ph-code-bg: rgba(0, 0, 0, 0.05);
+  --ph-code-fg: #9a6700;
+  --ph-link-bg: rgba(0, 0, 0, 0.045);
+  --ph-link-bg-hover: rgba(0, 0, 0, 0.08);
+  --ph-link-fg: #0b7a5a;
+  --ph-toc-link: #4b5563;
+  --ph-toc-link-hover: #111827;
+  --ph-diag-bg: #ffffff;
+  --ph-diag-text: #333333;
+  --ph-badge-gray: #5b6472;
+  --ph-badge-released: #1c7f4e;
+  --ph-stage-l1: #3d5f9e;
+  --ph-stage-l2: #34589c;
+  --ph-stage-l3: #2b4f96;
+  --ph-aud-client: #8f5f16;
+  --ph-aud-team: #1e6ca3;
+  --ph-aud-agent: #6d43a8;
+  --ph-class: #1f7a78;
+}
 
 /* --- Общий текст --- */
 body {
@@ -12,13 +71,13 @@ body {
 body > p,
 li > p,
 blockquote p {
-  color: rgba(246, 246, 246, 0.8);
+  color: var(--ph-text);
 }
 
 /* --- Заголовки --- */
 h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
-  color: rgba(246, 246, 246, 0.92);
+  color: var(--ph-heading);
 }
 h1 { font-size: 14pt; }
 h2 { font-size: 13pt; }
@@ -43,7 +102,7 @@ hr {
   font-size: 10.5pt;
 }
 .fm-title {
-  color: #8a94a6;
+  color: var(--ph-muted);
   font-size: 9pt;
   letter-spacing: 0.04em;
   margin-bottom: 12px;
@@ -61,7 +120,7 @@ hr {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: rgba(246, 246, 246, 0.76);
+  color: var(--ph-key);
 }
 .fm-key::before {
   content: "";
@@ -145,7 +204,7 @@ hr {
 .fm-badge--disabled {
   background: rgba(128, 128, 128, 0.16);
   border-color: rgba(128, 128, 128, 0.28);
-  color: #b9c0cc;
+  color: var(--ph-badge-gray);
 }
 .fm-badge--unreleased .fm-dot,
 .fm-badge--disabled .fm-dot { background: #8a94a6; }
@@ -153,47 +212,47 @@ hr {
 .fm-badge--enabled {
   background: rgba(64, 160, 100, 0.2);
   border-color: rgba(64, 160, 100, 0.45);
-  color: #79d199;
+  color: var(--ph-badge-released);
 }
 .fm-badge--released .fm-dot,
 .fm-badge--enabled .fm-dot { background: #46b978; }
 .fm-stage--l1 {
   background: rgba(90, 130, 200, 0.12);
   border-color: rgba(90, 130, 200, 0.3);
-  color: #9db4de;
+  color: var(--ph-stage-l1);
 }
 .fm-stage--l1 .fm-dot { background: #5f7fb8; }
 .fm-stage--l2 {
   background: rgba(90, 130, 200, 0.2);
   border-color: rgba(90, 130, 200, 0.45);
-  color: #b6c9ec;
+  color: var(--ph-stage-l2);
 }
 .fm-stage--l2 .fm-dot { background: #7f9fd8; }
 .fm-stage--l3 {
   background: rgba(90, 130, 200, 0.32);
   border-color: rgba(90, 130, 200, 0.6);
-  color: #d3e0f8;
+  color: var(--ph-stage-l3);
 }
 .fm-stage--l3 .fm-dot { background: #9fbcf0; }
 .fm-audience--client {
   background: rgba(210, 150, 60, 0.18);
   border-color: rgba(210, 150, 60, 0.4);
-  color: #e0b878;
+  color: var(--ph-aud-client);
 }
 .fm-audience--team {
   background: rgba(80, 150, 210, 0.18);
   border-color: rgba(80, 150, 210, 0.4);
-  color: #8fc0e8;
+  color: var(--ph-aud-team);
 }
 .fm-audience--agent {
   background: rgba(150, 110, 210, 0.18);
   border-color: rgba(150, 110, 210, 0.4);
-  color: #c0a4e6;
+  color: var(--ph-aud-agent);
 }
 .fm-class {
   background: rgba(90, 170, 170, 0.16);
   border-color: rgba(90, 170, 170, 0.35);
-  color: #8fd0cf;
+  color: var(--ph-class);
   text-transform: none;
 }
 
@@ -220,12 +279,12 @@ table td {
   overflow-wrap: break-word;
   word-break: normal;
 }
-table td { color: rgba(246, 246, 246, 0.8); }
+table td { color: var(--ph-text); }
 table tr:last-child td { border-bottom: none; }
 table thead th,
 table th {
   background: rgba(128, 128, 128, 0.1);
-  color: rgba(246, 246, 246, 0.92);
+  color: var(--ph-heading);
   font-weight: 600;
   font-size: 8.5pt;
   letter-spacing: 0.06em;
@@ -262,8 +321,8 @@ a[data-href*=".md#"] {
   gap: 0.32em;
   padding: 1px 7px;
   border-radius: 4px;
-  background: rgba(246, 246, 246, 0.06);
-  color: rgba(0, 212, 146, 0.92);
+  background: var(--ph-link-bg);
+  color: var(--ph-link-fg);
   font-weight: 600;
   text-decoration: none;
   vertical-align: baseline;
@@ -274,7 +333,7 @@ a[href$=".md"]:hover,
 a[href*=".md#"]:hover,
 a[data-href$=".md"]:hover,
 a[data-href*=".md#"]:hover {
-  background: rgba(246, 246, 246, 0.1);
+  background: var(--ph-link-bg-hover);
 }
 a[href$=".md"]::before,
 a[href*=".md#"]::before,
@@ -302,7 +361,7 @@ a[data-href*=".md#"]::before {
   backdrop-filter: blur(2px);
 }
 .doc-toc .doc-toc-title {
-  color: #8a94a6;
+  color: var(--ph-muted);
   font-size: 9pt;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -339,7 +398,7 @@ a[data-href*=".md#"]::before {
   background: rgba(140, 148, 166, 0.7);
 }
 .doc-toc a {
-  color: #b9c0cc;
+  color: var(--ph-toc-link);
   text-decoration: none;
   border-radius: 5px;
   padding: 2px 6px;
@@ -350,7 +409,7 @@ a[data-href*=".md#"]::before {
 }
 .doc-toc a::before { display: none; }
 .doc-toc a:hover {
-  color: #e6eaf2;
+  color: var(--ph-toc-link-hover);
   background: rgba(128, 128, 128, 0.16);
 }
 /* Вариант TOC-абзаца: ссылки с жёсткими переносами вместо списка. */
@@ -378,8 +437,8 @@ a[data-href*=".md#"]::before {
 
 /* --- Инлайн-код: жёлтый текст на лёгкой плашке --- */
 :not(pre) > code {
-  background: rgba(246, 246, 246, 0.06) !important;
-  color: rgba(255, 223, 78, 0.92) !important;
+  background: var(--ph-code-bg) !important;
+  color: var(--ph-code-fg) !important;
   border: none !important;
   border-radius: 4px;
   padding: 1px 6px;
@@ -388,7 +447,7 @@ a[data-href*=".md#"]::before {
 /* --- Диаграммы: тёмная карточка, кнопка "раскрыть" внутри контейнера --- */
 .diag-host {
   position: relative;
-  background: #1e1e1e;
+  background: var(--ph-diag-bg);
   border: 1px solid rgba(128, 128, 128, 0.25);
   border-radius: 10px;
   padding: 16px;
@@ -406,7 +465,7 @@ a[data-href*=".md#"]::before {
   display: inline-block;
   max-width: 100%;
   text-align: center;
-  color: #d4d4d4;
+  color: var(--ph-diag-text);
 }
 .diag-host .mermaid svg {
   max-width: 100%;
@@ -415,11 +474,11 @@ a[data-href*=".md#"]::before {
 /* Подписи связей — тёмный фон, чтобы текст читался поверх линий. */
 .diag-host .mermaid .edgeLabel,
 .diag-host .mermaid .edgeLabel p {
-  background-color: #1e1e1e !important;
-  color: #d4d4d4 !important;
+  background-color: var(--ph-diag-bg) !important;
+  color: var(--ph-diag-text) !important;
 }
 .diag-host .mermaid .edgeLabel rect {
-  fill: #1e1e1e !important;
+  fill: var(--ph-diag-bg) !important;
 }
 .diag-expand {
   position: absolute;
@@ -481,7 +540,7 @@ a[data-href*=".md#"]::before {
   display: block;
   max-width: none;
   height: auto;
-  background: #1e1e1e;
+  background: var(--ph-diag-bg);
   border-radius: 8px;
 }
 .diag-modal__bar {

@@ -178,16 +178,36 @@ skinparam ArrowColor #9aa4b2
 skinparam lineColor #9aa4b2
 `;
 
+// Светлая тема: у PlantUML родная палитра светлая и читаемая,
+// достаточно прозрачного фона (карточку рисует CSS) и отключения теней.
+const PUML_SKIN_LIGHT = `skinparam backgroundColor transparent
+skinparam shadowing false
+`;
+
+// Тёмная ли тема редактора (ColorThemeKind: 2 = Dark, 3 = HighContrast).
+function isDarkEditorTheme() {
+  if (vscode) {
+    try {
+      const kind = vscode.window.activeColorTheme.kind;
+      return kind === 2 || kind === 3;
+    } catch (e) { /* API недоступен — считаем тёмной */ }
+  }
+  return true;
+}
+
 function renderPlantUml(code) {
   let body = code.trim();
+  const dark = isDarkEditorTheme();
+  const skinFull = dark ? PUML_SKIN : PUML_SKIN_LIGHT;
+  const skinBasic = dark ? PUML_SKIN_BASIC : PUML_SKIN_LIGHT;
   if (/@startuml/.test(body)) {
-    body = body.replace(/@startuml[^\n]*/, (m) => m + '\n' + PUML_SKIN);
+    body = body.replace(/@startuml[^\n]*/, (m) => m + '\n' + skinFull);
   } else if (/@start\w+/.test(body)) {
     // Другие типы (@startmindmap, @startgantt, ...) — не оборачиваем в
     // @startuml (это ломает синтаксис), инжектим только базовую тему.
-    body = body.replace(/@start\w+[^\n]*/, (m) => m + '\n' + PUML_SKIN_BASIC);
+    body = body.replace(/@start\w+[^\n]*/, (m) => m + '\n' + skinBasic);
   } else {
-    body = '@startuml\n' + PUML_SKIN + body + '\n@enduml';
+    body = '@startuml\n' + skinFull + body + '\n@enduml';
   }
   const url = plantUmlServer() + '/svg/' + encodePlantUml(body);
   return diagramHtml(url, 'plantuml');
