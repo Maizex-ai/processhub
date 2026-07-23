@@ -33,9 +33,17 @@ $id  = $pkg.name
 $ver = $pkg.version
 $pub = $pkg.publisher
 
+# One stable filename for the team zip / Install from VSIX.
+# Version lives inside the package (extension.vsixmanifest), not in the filename —
+# so updates overwrite the same file instead of piling up 0.1, 0.2, 0.3...
 if (-not $OutFile) {
-    $OutFile = Join-Path $root ("{0}.{1}-{2}.vsix" -f $pub, $id, $ver)
+    $OutFile = Join-Path $root ("{0}.{1}.vsix" -f $pub, $id)
 }
+
+# Drop any older/versioned .vsix next to the script (keep only the target we build).
+Get-ChildItem $root -Filter "*.vsix" -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -ne $OutFile } |
+    Remove-Item -Force
 
 $manifest = @"
 <?xml version="1.0" encoding="utf-8"?>

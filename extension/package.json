@@ -3,7 +3,7 @@
   "displayName": "ProcessHub Markdown Preview",
   "description": "Оформление встроенного превью Markdown под стандарты ProcessHub: YAML-панель свойств, тёмные PlantUML/Mermaid с зумом, карточки TOC, стилизованные таблицы и ссылки.",
   "publisher": "processhub",
-  "version": "0.6.0",
+  "version": "0.8.1",
   "engines": {
     "vscode": "^1.70.0"
   },
@@ -11,10 +11,40 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:markdown"
+    "onLanguage:markdown",
+    "onCommand:processhubMdPreview.openPreview"
   ],
   "main": "./extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "processhubMdPreview.openPreview",
+        "title": "Open ProcessHub Preview",
+        "icon": "$(open-preview)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "processhubMdPreview.openPreview",
+          "when": "editorLangId == markdown || resourceExtname == .md"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "processhubMdPreview.openPreview",
+          "when": "editorLangId == markdown",
+          "group": "navigation@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "processhubMdPreview.openPreview",
+          "when": "resourceExtname == .md",
+          "group": "navigation@1"
+        }
+      ]
+    },
     "markdown.markdownItPlugins": true,
     "markdown.previewStyles": [
       "./media/preview.css"
@@ -29,10 +59,26 @@
     "configuration": {
       "title": "ProcessHub Markdown Preview",
       "properties": {
+        "processhubMdPreview.plantumlRender": {
+          "type": "string",
+          "enum": ["server", "local", "docker"],
+          "default": "server",
+          "description": "Как рендерить PlantUML: server — HTTP-сервер (по умолчанию plantuml.com); local — офлайн через Java и plantuml.jar; docker — локальный контейнер plantuml-server (http://127.0.0.1:8080)."
+        },
         "processhubMdPreview.plantumlServer": {
           "type": "string",
           "default": "https://www.plantuml.com/plantuml",
-          "description": "Адрес PlantUML-сервера для рендера диаграмм (без завершающего /). Для приватности укажите внутренний сервер команды, например http://plantuml.local:8080."
+          "description": "Адрес PlantUML-сервера (режимы server/docker), без завершающего /. В режиме docker по умолчанию используется http://127.0.0.1:8080, если здесь оставлен URL plantuml.com."
+        },
+        "processhubMdPreview.plantumlJar": {
+          "type": "string",
+          "default": "",
+          "description": "Путь к plantuml.jar (режим local). Если пусто — берётся plantuml.jar из расширения PlantUML (jebbs), если он задан."
+        },
+        "processhubMdPreview.java": {
+          "type": "string",
+          "default": "java",
+          "description": "Команда или путь к Java (режим local). Если пусто/java — также пробуется plantuml.java из расширения PlantUML."
         },
         "processhubMdPreview.diagramTheme": {
           "type": "string",

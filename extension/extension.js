@@ -11,10 +11,16 @@
 'use strict';
 
 const zlib = require('zlib');
+const crypto = require('crypto');
+const fs = require('fs');
+const { execFileSync } = require('child_process');
 
 // vscode доступен в extension host; страхуемся на случай юнит-тестов вне IDE.
 let vscode = null;
 try { vscode = require('vscode'); } catch (e) { /* не в extension host */ }
+
+// Кэш локального рендера (java -jar): ключ = sha1 исходника со skinparam.
+const localPumlCache = new Map();
 
 // ---------------------------------------------------------------------------
 // Кодировщики URL диаграмм
@@ -126,18 +132,59 @@ skinparam sequence {
 `;
 
 const PLANTUML_SERVER_DEFAULT = 'https://www.plantuml.com/plantuml';
+const PLANTUML_DOCKER_DEFAULT = 'http://127.0.0.1:8080';
 
-// Адрес PlantUML-сервера — из настройки (можно указать свой/внутренний сервер).
-function plantUmlServer() {
+function phConfig(key, fallback) {
   if (vscode) {
     try {
-      const v = vscode.workspace
-        .getConfiguration('processhubMdPreview')
-        .get('plantumlServer');
-      if (v && typeof v === 'string') return v.replace(/\/+$/, '');
-    } catch (e) { /* конфигурация недоступна — используем дефолт */ }
+      const v = vscode.workspace.getConfiguration('processhubMdPreview').get(key);
+      if (v !== undefined && v !== null && v !== '') return v;
+    } catch (e) { /* fallback */ }
   }
-  return PLANTUML_SERVER_DEFAULT;
+  return fallback;
+}
+
+// Режим: server (HTTP) | local (Java + plantuml.jar) | docker (локальный контейнер).
+function plantUmlRenderMode() {
+  const v = phConfig('plantumlRender', 'server');
+  return v === 'local' || v === 'docker' ? v : 'server';
+}
+
+// Адрес PlantUML-сервера. В режиме docker — localhost, если свой URL не задан.
+function plantUmlServer() {
+  if (plantUmlRenderMode() === 'docker') {
+    const custom = phConfig('plantumlServer', '');
+    if (custom && custom !== PLANTUML_SERVER_DEFAULT) {
+      return String(custom).replace(/\/+$/, '');
+    }
+    return PLANTUML_DOCKER_DEFAULT;
+  }
+  return String(phConfig('plantumlServer', PLANTUML_SERVER_DEFAULT)).replace(/\/+$/, '');
+}
+
+// Путь к java / jar. Если не заданы у нас — подхватываем настройки jebbs.plantuml.
+function plantUmlJava() {
+  const ours = phConfig('java', '');
+  if (ours) return String(ours);
+  if (vscode) {
+    try {
+      const v = vscode.workspace.getConfiguration('plantuml').get('java');
+      if (v) return String(v);
+    } catch (e) { /* ignore */ }
+  }
+  return 'java';
+}
+
+function plantUmlJar() {
+  const ours = phConfig('plantumlJar', '');
+  if (ours) return String(ours);
+  if (vscode) {
+    try {
+      const v = vscode.workspace.getConfiguration('plantuml').get('jar');
+      if (v) return String(v);
+    } catch (e) { /* ignore */ }
+  }
+  return '';
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +212,17 @@ function diagramHtml(url, kind) {
     '<div class="diag-host diag-' + kind + '">' +
     '<img class="diag-img" src="' + url + '" alt="' + kind + ' diagram">' +
     EXPAND_BTN +
+    '</div>\n'
+  );
+}
+
+function diagramErrorHtml(message, source) {
+  return (
+    '<div class="diag-host diag-plantuml diag-error">' +
+    '<p class="diag-error-msg">' + esc(message) + '</p>' +
+    (source
+      ? '<pre class="diag-error-src"><code>' + esc(source) + '</code></pre>'
+      : '') +
     '</div>\n'
   );
 }
@@ -216,7 +274,7 @@ function isPlantUmlLang(info) {
   return info === 'plantuml' || info === 'puml' || info === 'uml';
 }
 
-function renderPlantUml(code) {
+function preparePlantUmlBody(code) {
   let body = code.trim();
   const dark = useDarkDiagramTheme();
   const skinFull = dark ? PUML_SKIN : PUML_SKIN_LIGHT;
@@ -230,6 +288,63 @@ function renderPlantUml(code) {
   } else {
     body = '@startuml\n' + skinFull + body + '\n@enduml';
   }
+  return body;
+}
+
+// Офлайн: java -jar plantuml.jar -tsvg -pipe → SVG → data-URI (без сети).
+function renderPlantUmlLocal(body) {
+  const jar = plantUmlJar();
+  if (!jar) {
+    return diagramErrorHtml(
+      'PlantUML (local): не задан путь к plantuml.jar. ' +
+        'Settings → processhubMdPreview.plantumlJar ' +
+        '(или plantuml.jar у расширения PlantUML).',
+      body
+    );
+  }
+  if (!fs.existsSync(jar)) {
+    return diagramErrorHtml(
+      'PlantUML (local): файл jar не найден: ' + jar,
+      body
+    );
+  }
+  const key = crypto.createHash('sha1').update(body).digest('hex');
+  if (localPumlCache.has(key)) return localPumlCache.get(key);
+
+  const java = plantUmlJava();
+  try {
+    const svg = execFileSync(
+      java,
+      ['-jar', jar, '-tsvg', '-pipe', '-quiet'],
+      {
+        input: body,
+        maxBuffer: 20 * 1024 * 1024,
+        timeout: 60000,
+        windowsHide: true,
+        encoding: null,
+      }
+    );
+    const url =
+      'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');
+    const html = diagramHtml(url, 'plantuml');
+    localPumlCache.set(key, html);
+    return html;
+  } catch (e) {
+    const detail = (e && (e.stderr || e.message)) || String(e);
+    return diagramErrorHtml(
+      'PlantUML (local): ошибка java/jar. Нужны Java и plantuml.jar. ' +
+        String(detail).slice(0, 400),
+      body
+    );
+  }
+}
+
+function renderPlantUml(code) {
+  const body = preparePlantUmlBody(code);
+  if (plantUmlRenderMode() === 'local') {
+    return renderPlantUmlLocal(body);
+  }
+  // server и docker — один протокол /svg/<encoded>
   const url = plantUmlServer() + '/svg/' + encodePlantUml(body);
   return diagramHtml(url, 'plantuml');
 }
@@ -446,7 +561,28 @@ function claimPlantUmlTokens(state) {
   }
 }
 
-function activate() {
+function openMarkdownPreview(uri) {
+  if (!vscode) return;
+  const target =
+    uri ||
+    (vscode.window.activeTextEditor &&
+      vscode.window.activeTextEditor.document.languageId === 'markdown' &&
+      vscode.window.activeTextEditor.document.uri);
+  if (target) {
+    return vscode.commands.executeCommand('markdown.showPreviewToSide', target);
+  }
+  return vscode.commands.executeCommand('markdown.showPreviewToSide');
+}
+
+function activate(context) {
+  if (vscode && context) {
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        'processhubMdPreview.openPreview',
+        openMarkdownPreview
+      )
+    );
+  }
   return {
     extendMarkdownIt(md) {
       md.block.ruler.before('table', 'ph_front_matter', frontMatterRule);
