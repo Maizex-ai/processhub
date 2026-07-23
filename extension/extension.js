@@ -402,6 +402,13 @@ function activate() {
         if (info === 'mermaid') {
           return renderMermaid(token.content);
         }
+        // Явный синтаксис панели свойств: блок ```properties (или ```props /
+        // ```frontmatter) рендерится панелью из ЛЮБОГО места документа —
+        // идентификация по метке, а не по позиции.
+        if (info === 'properties' || info === 'props' || info === 'frontmatter') {
+          const panel = renderFrontMatterPanel(token.content);
+          if (panel) return panel;
+        }
         // Запасной путь: если фронт-маттер пришёл yaml-код-блоком в начале файла.
         if (info === 'yaml' && token.map && token.map[0] === 0) {
           const panel = renderFrontMatterPanel(token.content);
