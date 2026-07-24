@@ -561,17 +561,44 @@ function claimPlantUmlTokens(state) {
   }
 }
 
-function openMarkdownPreview(uri) {
-  if (!vscode) return;
-  const target =
-    uri ||
-    (vscode.window.activeTextEditor &&
-      vscode.window.activeTextEditor.document.languageId === 'markdown' &&
-      vscode.window.activeTextEditor.document.uri);
-  if (target) {
-    return vscode.commands.executeCommand('markdown.showPreviewToSide', target);
+function resolveMarkdownUri(uri) {
+  if (!vscode) return null;
+  let target = uri;
+  if (Array.isArray(target)) target = target[0];
+  if (target && !(target instanceof vscode.Uri)) {
+    if (target.fsPath) target = vscode.Uri.file(target.fsPath);
+    else if (typeof target === 'string') target = vscode.Uri.file(target);
+    else target = null;
   }
-  return vscode.commands.executeCommand('markdown.showPreviewToSide');
+  if (
+    !target &&
+    vscode.window.activeTextEditor &&
+    vscode.window.activeTextEditor.document.languageId === 'markdown'
+  ) {
+    target = vscode.window.activeTextEditor.document.uri;
+  }
+  return target || null;
+}
+
+// Locked preview: не следует за курсором/другой вкладкой — удобно читать длинные UC.
+// Обычный preview оставляем как запасной путь.
+// Скролл-sync с редактором НЕ пишем в settings.json — только клиентский
+// перехват в media/preview.js (контур расширения, чужие настройки не трогаем).
+async function openMarkdownPreview(uri) {
+  if (!vscode) return;
+  const target = resolveMarkdownUri(uri);
+  const cmds = [
+    'markdown.showLockedPreviewToSide',
+    'markdown.showPreviewToSide',
+  ];
+  for (let i = 0; i < cmds.length; i++) {
+    try {
+      if (target) return await vscode.commands.executeCommand(cmds[i], target);
+      return await vscode.commands.executeCommand(cmds[i]);
+    } catch (e) {
+      /* пробуем следующий вариант */
+    }
+  }
 }
 
 function activate(context) {

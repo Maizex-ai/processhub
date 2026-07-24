@@ -5,6 +5,25 @@
   if (window.__phDiagZoom) return;
   window.__phDiagZoom = true;
 
+  // Независимое листание превью без записи в settings.json IDE.
+  // 1) Глушим updateView (команда «прокрути к строке курсора»).
+  // 2) window.scroll/scrollTo — то, чем штатный preview двигает страницу;
+  //    колесо/бар и наш scrollIntoView (TOC) эти API не используют.
+  // User/workspace markdown.preview.scroll* не меняем; снятие расширения
+  // возвращает штатный sync как был.
+  window.addEventListener(
+    'message',
+    function (e) {
+      var d = e && e.data;
+      if (d && d.type === 'updateView') {
+        e.stopImmediatePropagation();
+      }
+    },
+    true
+  );
+  window.scroll = function () {};
+  window.scrollTo = function () {};
+
   // --- Локальный рендер Mermaid ---
   var mermaidReady = false;
   function preferLightMermaid() {
@@ -116,11 +135,33 @@
     );
   }
 
+  var enhanceTimer = null;
+  var enhancing = false;
+
   function enhanceHosts() {
-    var hosts = document.querySelectorAll('.diag-host:not(.diag-error)');
-    for (var i = 0; i < hosts.length; i++) {
-      enhanceOne(hosts[i]);
+    if (enhancing) return;
+    enhancing = true;
+    // Обёртка диаграмм меняет высоту DOM — без фиксации scrollTop превью
+    // «прыгает» к позиции курсора/синхронизации редактора.
+    var scroller =
+      document.scrollingElement ||
+      document.documentElement ||
+      document.body;
+    var y = scroller ? scroller.scrollTop : 0;
+    try {
+      var hosts = document.querySelectorAll('.diag-host:not(.diag-error)');
+      for (var i = 0; i < hosts.length; i++) {
+        enhanceOne(hosts[i]);
+      }
+    } finally {
+      if (scroller) scroller.scrollTop = y;
+      enhancing = false;
     }
+  }
+
+  function scheduleEnhance() {
+    clearTimeout(enhanceTimer);
+    enhanceTimer = setTimeout(enhanceHosts, 200);
   }
 
   function enhanceOne(host) {
@@ -757,11 +798,11 @@
   // Дорисовка после подгрузки SVG с сервера PlantUML.
   try {
     var mo = new MutationObserver(function () {
-      enhanceHosts();
+      scheduleEnhance();
     });
     mo.observe(document.body, { childList: true, subtree: true });
   } catch (e) { /* ignore */ }
-  setTimeout(enhanceHosts, 0);
-  setTimeout(enhanceHosts, 500);
+  setTimeout(scheduleEnhance, 0);
+  setTimeout(scheduleEnhance, 500);
   setTimeout(scheduleTocRebuild, 300);
 })();
