@@ -365,8 +365,13 @@
       if (e.target === stage) closeModal();
     });
     window.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && overlay && overlay.classList.contains('open')) {
+      if (e.key !== 'Escape') return;
+      if (overlay && overlay.classList.contains('open')) {
         closeModal();
+        return;
+      }
+      if (document.body.classList.contains('ph-toc-open')) {
+        setTocOpen(false);
       }
     });
   }
@@ -385,6 +390,370 @@
     true
   );
 
+  // ---------------------------------------------------------------------------
+  // Sidebar TOC — навигация по заголовкам + поиск по разделам
+  // ---------------------------------------------------------------------------
+
+  var TOC_KEY = 'ph-sidetoc-open';
+  var tocRoot = null;
+  var tocList = null;
+  var tocBtn = null;
+  var tocSearch = null;
+  var tocSearchWrap = null;
+  var tocMeta = null;
+  var tocSections = [];
+  var tocRefreshTimer = null;
+  var tocSearchTimer = null;
+  var tocQuery = '';
+
+  function tocIsOpen() {
+    try {
+      return sessionStorage.getItem(TOC_KEY) === '1';
+    } catch (e) {
+      return document.body.classList.contains('ph-toc-open');
+    }
+  }
+
+  function setTocOpen(open) {
+    document.body.classList.toggle('ph-toc-open', !!open);
+    if (tocRoot) tocRoot.classList.toggle('open', !!open);
+    if (tocBtn) {
+      tocBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      tocBtn.title = open ? 'Скрыть содержание' : 'Показать содержание';
+    }
+    try {
+      sessionStorage.setItem(TOC_KEY, open ? '1' : '0');
+    } catch (e) { /* ignore */ }
+  }
+
+  function ensureHeadingId(h, index) {
+    if (h.id) return h.id;
+    var slug = (h.textContent || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\u0400-\u04ff]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    var id = slug || 'ph-h-' + index;
+    var base = id;
+    var n = 1;
+    while (document.getElementById(id)) {
+      id = base + '-' + n;
+      n++;
+    }
+    h.id = id;
+    return id;
+  }
+
+  function isHeadingEl(el) {
+    return el && /^H[1-6]$/.test(el.tagName || '');
+  }
+
+  function collectSections() {
+    var out = [];
+    var nodes = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    for (var i = 0; i < nodes.length; i++) {
+      var h = nodes[i];
+      if (h.closest('.diag-modal') || h.closest('.ph-sidetoc')) continue;
+      if (h.classList.contains('doc-toc-title')) continue;
+      var text = (h.textContent || '').trim();
+      if (!text) continue;
+      var parts = [];
+      var n = h.nextElementSibling;
+      while (n && !isHeadingEl(n)) {
+        if (
+          !n.closest('.ph-sidetoc') &&
+          !n.classList.contains('doc-toc') &&
+          !n.classList.contains('fm-props')
+        ) {
+          var t = (n.textContent || '').replace(/\s+/g, ' ').trim();
+          if (t) parts.push(t);
+        }
+        n = n.nextElementSibling;
+      }
+      out.push({
+        id: ensureHeadingId(h, i),
+        text: text,
+        level: parseInt(h.tagName.charAt(1), 10),
+        body: parts.join(' ')
+      });
+    }
+    return out;
+  }
+
+  function queryWords(q) {
+    return String(q || '')
+      .trim()
+      .toLowerCase()
+      .split(/[\s,.;:!?«»"'()]+/)
+      .filter(function (w) {
+        return w.length > 1;
+      });
+  }
+
+  function highlightHtml(text, words) {
+    var safe = escHtml(text);
+    if (!words || !words.length) return safe;
+    var re = new RegExp(
+      '(' +
+        words
+          .slice()
+          .sort(function (a, b) {
+            return b.length - a.length;
+          })
+          .map(function (w) {
+            return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          })
+          .join('|') +
+        ')',
+      'gi'
+    );
+    return safe.replace(re, '<mark class="ph-sidetoc__mark">$1</mark>');
+  }
+
+  function makeSnippet(body, words) {
+    if (!body) return '';
+    var lower = body.toLowerCase();
+    var idx = -1;
+    var hit = '';
+    for (var i = 0; i < words.length; i++) {
+      var p = lower.indexOf(words[i]);
+      if (p >= 0 && (idx < 0 || p < idx)) {
+        idx = p;
+        hit = words[i];
+      }
+    }
+    if (idx < 0) return '';
+    var from = Math.max(0, idx - 36);
+    var to = Math.min(body.length, idx + hit.length + 48);
+    var slice = body.slice(from, to).replace(/\s+/g, ' ').trim();
+    if (from > 0) slice = '\u2026' + slice;
+    if (to < body.length) slice = slice + '\u2026';
+    return slice;
+  }
+
+  function searchSections(q) {
+    var words = queryWords(q);
+    if (!words.length) return null;
+    var results = [];
+    for (var i = 0; i < tocSections.length; i++) {
+      var sec = tocSections[i];
+      var hay = (sec.text + ' ' + sec.body).toLowerCase();
+      var ok = true;
+      for (var w = 0; w < words.length; w++) {
+        if (hay.indexOf(words[w]) < 0) {
+          ok = false;
+          break;
+        }
+      }
+      if (!ok) continue;
+      results.push({
+        id: sec.id,
+        title: sec.text,
+        level: sec.level,
+        snippet: makeSnippet(sec.body, words),
+        words: words
+      });
+    }
+    return results;
+  }
+
+  function ensureTocUi() {
+    if (tocRoot) return;
+    tocBtn = document.createElement('button');
+    tocBtn.type = 'button';
+    tocBtn.className = 'ph-sidetoc-toggle';
+    tocBtn.setAttribute('aria-controls', 'ph-sidetoc');
+    tocBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round" aria-hidden="true">' +
+      '<line x1="8" y1="6" x2="21" y2="6"/>' +
+      '<line x1="8" y1="12" x2="21" y2="12"/>' +
+      '<line x1="8" y1="18" x2="21" y2="18"/>' +
+      '<line x1="3" y1="6" x2="3.01" y2="6"/>' +
+      '<line x1="3" y1="12" x2="3.01" y2="12"/>' +
+      '<line x1="3" y1="18" x2="3.01" y2="18"/>' +
+      '</svg>';
+    tocBtn.addEventListener('click', function () {
+      setTocOpen(!document.body.classList.contains('ph-toc-open'));
+    });
+
+    tocRoot = document.createElement('aside');
+    tocRoot.id = 'ph-sidetoc';
+    tocRoot.className = 'ph-sidetoc';
+    tocRoot.setAttribute('aria-label', 'Содержание документа');
+    tocRoot.innerHTML =
+      '<div class="ph-sidetoc__head">' +
+      '<div class="ph-sidetoc__title-wrap">' +
+      '<span class="ph-sidetoc__title">Содержание</span>' +
+      '</div>' +
+      '<button type="button" class="ph-sidetoc__close" title="Скрыть" aria-label="Скрыть содержание">\u2715</button>' +
+      '</div>' +
+      '<div class="ph-sidetoc__search-wrap">' +
+      '<label class="ph-sidetoc__search">' +
+      '<svg class="ph-sidetoc__search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>' +
+      '</svg>' +
+      '<input class="ph-sidetoc__search-input" type="search" placeholder="Поиск по документу" autocomplete="off" spellcheck="false" />' +
+      '</label>' +
+      '<div class="ph-sidetoc__meta" hidden></div>' +
+      '</div>' +
+      '<nav class="ph-sidetoc__nav"><ul class="ph-sidetoc__list"></ul></nav>';
+    tocList = tocRoot.querySelector('.ph-sidetoc__list');
+    tocSearch = tocRoot.querySelector('.ph-sidetoc__search-input');
+    tocSearchWrap = tocRoot.querySelector('.ph-sidetoc__search');
+    tocMeta = tocRoot.querySelector('.ph-sidetoc__meta');
+
+    tocRoot.querySelector('.ph-sidetoc__close').addEventListener('click', function () {
+      setTocOpen(false);
+    });
+
+    tocSearch.addEventListener('input', function () {
+      tocQuery = tocSearch.value;
+      tocSearchWrap.classList.toggle('is-filled', tocQuery.trim().length > 0);
+      clearTimeout(tocSearchTimer);
+      tocSearchTimer = setTimeout(renderTocList, 120);
+    });
+    tocSearch.addEventListener('focus', function () {
+      tocSearchWrap.classList.add('is-focused');
+    });
+    tocSearch.addEventListener('blur', function () {
+      tocSearchWrap.classList.remove('is-focused');
+    });
+
+    tocList.addEventListener('click', function (e) {
+      var a = e.target.closest('a');
+      if (!a || !tocList.contains(a)) return;
+      e.preventDefault();
+      var id = (a.getAttribute('href') || '').replace(/^#/, '');
+      var target = id && document.getElementById(id);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        tocList.querySelectorAll('a').forEach(function (x) {
+          x.classList.toggle('active', x === a);
+        });
+        if (a.blur) a.blur();
+      }
+    });
+
+    document.body.appendChild(tocBtn);
+    document.body.appendChild(tocRoot);
+    setTocOpen(tocIsOpen());
+  }
+
+  function renderTocList() {
+    if (!tocList) return;
+    var q = (tocSearch && tocSearch.value) || tocQuery || '';
+    var results = searchSections(q);
+
+    if (results && results.length) {
+      tocMeta.hidden = false;
+      tocMeta.textContent = 'Найдено разделов: ' + results.length;
+      var html = '';
+      for (var i = 0; i < results.length; i++) {
+        var r = results[i];
+        html +=
+          '<li class="ph-sidetoc__item ph-sidetoc__item--result">' +
+          '<a href="#' +
+          r.id +
+          '">' +
+          '<span class="ph-sidetoc__result-title">' +
+          highlightHtml(r.title, r.words) +
+          '</span>' +
+          (r.snippet
+            ? '<span class="ph-sidetoc__result-snippet">' +
+              highlightHtml(r.snippet, r.words) +
+              '</span>'
+            : '') +
+          '</a></li>';
+      }
+      tocList.innerHTML = html;
+      return;
+    }
+
+    // Пустой запрос или «ничего не найдено» — показываем полное содержание.
+    if (results && !results.length) {
+      tocMeta.hidden = false;
+      tocMeta.textContent = 'Ничего не найдено';
+    } else {
+      tocMeta.hidden = true;
+      tocMeta.textContent = '';
+    }
+    renderTocHeadings();
+  }
+
+  function renderTocHeadings() {
+    var items = tocSections;
+    if (!items.length) {
+      tocList.innerHTML = '';
+      return;
+    }
+    var min = 6;
+    for (var j = 0; j < items.length; j++) {
+      if (items[j].level < min) min = items[j].level;
+    }
+    var html2 = '';
+    for (var k = 0; k < items.length; k++) {
+      var it = items[k];
+      var depth = Math.max(0, it.level - min);
+      html2 +=
+        '<li class="ph-sidetoc__item ph-sidetoc__item--' +
+        depth +
+        '">' +
+        '<a href="#' +
+        it.id +
+        '">' +
+        escHtml(it.text) +
+        '</a></li>';
+    }
+    tocList.innerHTML = html2;
+  }
+
+  function rebuildToc() {
+    ensureTocUi();
+    tocSections = collectSections();
+    tocBtn.hidden = tocSections.length < 2;
+    if (tocSections.length < 2) {
+      setTocOpen(false);
+      tocList.innerHTML = '';
+      if (tocSearch) tocSearch.value = '';
+      tocQuery = '';
+      if (tocSearchWrap) tocSearchWrap.classList.remove('is-filled');
+      if (tocMeta) {
+        tocMeta.hidden = true;
+        tocMeta.textContent = '';
+      }
+      return;
+    }
+    if (tocSearch && tocQuery && tocSearch.value !== tocQuery) {
+      tocSearch.value = tocQuery;
+      tocSearchWrap.classList.toggle('is-filled', tocQuery.trim().length > 0);
+    }
+    renderTocList();
+    setTocOpen(tocIsOpen());
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function scheduleTocRebuild() {
+    clearTimeout(tocRefreshTimer);
+    tocRefreshTimer = setTimeout(rebuildToc, 120);
+  }
+
+  window.addEventListener('vscode.markdown.updateContent', scheduleTocRebuild);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scheduleTocRebuild);
+  } else {
+    scheduleTocRebuild();
+  }
+
   // Дорисовка после подгрузки SVG с сервера PlantUML.
   try {
     var mo = new MutationObserver(function () {
@@ -394,4 +763,5 @@
   } catch (e) { /* ignore */ }
   setTimeout(enhanceHosts, 0);
   setTimeout(enhanceHosts, 500);
+  setTimeout(scheduleTocRebuild, 300);
 })();
