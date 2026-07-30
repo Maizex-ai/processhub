@@ -432,7 +432,7 @@
   );
 
   // ---------------------------------------------------------------------------
-  // Sidebar TOC — навигация по заголовкам + поиск по разделам
+  // Sidebar — навигация по заголовкам + поиск с подсветкой в документе
   // ---------------------------------------------------------------------------
 
   var TOC_KEY = 'ph-sidetoc-open';
@@ -441,11 +441,41 @@
   var tocBtn = null;
   var tocSearch = null;
   var tocSearchWrap = null;
+  var tocSearchClear = null;
   var tocMeta = null;
   var tocSections = [];
   var tocRefreshTimer = null;
   var tocSearchTimer = null;
   var tocQuery = '';
+  var tocFocusTimer = null;
+  var DOC_HIT_LIMIT = 200;
+  var TOC_COLLAPSE_KEY = 'ph-sidetoc-collapsed';
+  var tocCollapsed = {};
+
+  function loadTocCollapsed() {
+    try {
+      var raw = sessionStorage.getItem(TOC_COLLAPSE_KEY);
+      tocCollapsed = raw ? JSON.parse(raw) || {} : {};
+    } catch (e) {
+      tocCollapsed = {};
+    }
+  }
+
+  function saveTocCollapsed() {
+    try {
+      sessionStorage.setItem(TOC_COLLAPSE_KEY, JSON.stringify(tocCollapsed));
+    } catch (e) { /* ignore */ }
+  }
+
+  function isTocCollapsed(id) {
+    return !!tocCollapsed[id];
+  }
+
+  function setTocCollapsed(id, collapsed) {
+    if (collapsed) tocCollapsed[id] = 1;
+    else delete tocCollapsed[id];
+    saveTocCollapsed();
+  }
 
   function tocIsOpen() {
     try {
@@ -460,7 +490,7 @@
     if (tocRoot) tocRoot.classList.toggle('open', !!open);
     if (tocBtn) {
       tocBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      tocBtn.title = open ? 'Скрыть содержание' : 'Показать содержание';
+      tocBtn.title = open ? 'Скрыть навигацию' : 'Показать навигацию';
     }
     try {
       sessionStorage.setItem(TOC_KEY, open ? '1' : '0');
@@ -531,10 +561,9 @@
       });
   }
 
-  function highlightHtml(text, words) {
-    var safe = escHtml(text);
-    if (!words || !words.length) return safe;
-    var re = new RegExp(
+  function wordsRegex(words) {
+    if (!words || !words.length) return null;
+    return new RegExp(
       '(' +
         words
           .slice()
@@ -548,54 +577,148 @@
         ')',
       'gi'
     );
+  }
+
+  function highlightHtml(text, words) {
+    var safe = escHtml(text);
+    var re = wordsRegex(words);
+    if (!re) return safe;
     return safe.replace(re, '<mark class="ph-sidetoc__mark">$1</mark>');
   }
 
-  function makeSnippet(body, words) {
-    if (!body) return '';
-    var lower = body.toLowerCase();
-    var idx = -1;
-    var hit = '';
-    for (var i = 0; i < words.length; i++) {
-      var p = lower.indexOf(words[i]);
-      if (p >= 0 && (idx < 0 || p < idx)) {
-        idx = p;
-        hit = words[i];
-      }
-    }
-    if (idx < 0) return '';
-    var from = Math.max(0, idx - 36);
-    var to = Math.min(body.length, idx + hit.length + 48);
-    var slice = body.slice(from, to).replace(/\s+/g, ' ').trim();
+  function makeSnippetAround(text, index, len) {
+    if (!text) return '';
+    var from = Math.max(0, index - 36);
+    var to = Math.min(text.length, index + len + 48);
+    var slice = text.slice(from, to).replace(/\s+/g, ' ').trim();
     if (from > 0) slice = '\u2026' + slice;
-    if (to < body.length) slice = slice + '\u2026';
+    if (to < text.length) slice = slice + '\u2026';
     return slice;
   }
 
-  function searchSections(q) {
+  function nearestSectionTitle(el) {
+    var best = 'Документ';
+    for (var i = 0; i < tocSections.length; i++) {
+      var h = document.getElementById(tocSections[i].id);
+      if (!h) continue;
+      if (h === el || h.contains(el)) {
+        best = tocSections[i].text;
+        continue;
+      }
+      // h перед el → кандидат; как только h после el — дальше не смотрим
+      if (h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) {
+        best = tocSections[i].text;
+      } else {
+        break;
+      }
+    }
+    return best;
+  }
+
+  function clearDocHighlights() {
+    var marks = document.querySelectorAll('mark.ph-doc-mark');
+    for (var i = 0; i < marks.length; i++) {
+      var m = marks[i];
+      var parent = m.parentNode;
+      if (!parent) continue;
+      parent.replaceChild(document.createTextNode(m.textContent || ''), m);
+      parent.normalize();
+    }
+  }
+
+  function shouldSkipSearchNode(node) {
+    var p = node.parentElement;
+    if (!p) return true;
+    if (p.closest('.ph-sidetoc, .ph-sidetoc-toggle, .diag-modal, .diag-host, .diag-nav, script, style, noscript')) {
+      return true;
+    }
+    if (p.closest('mark.ph-doc-mark')) return true;
+    if (/^(SCRIPT|STYLE|NOSCRIPT|TEXTAREA|INPUT|SVG|PATH)$/i.test(p.tagName)) {
+      return true;
+    }
+    return false;
+  }
+
+  // Подсветка совпадений в теле документа + список хитов для сайдбара.
+  function applyDocSearch(q) {
+    clearDocHighlights();
     var words = queryWords(q);
     if (!words.length) return null;
-    var results = [];
-    for (var i = 0; i < tocSections.length; i++) {
-      var sec = tocSections[i];
-      var hay = (sec.text + ' ' + sec.body).toLowerCase();
-      var ok = true;
-      for (var w = 0; w < words.length; w++) {
-        if (hay.indexOf(words[w]) < 0) {
-          ok = false;
-          break;
+    var re = wordsRegex(words);
+    if (!re) return null;
+
+    var root = document.querySelector('.markdown-body') || document.body;
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        if (!node.nodeValue || !/\S/.test(node.nodeValue)) {
+          return NodeFilter.FILTER_REJECT;
         }
+        return shouldSkipSearchNode(node)
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT;
       }
-      if (!ok) continue;
-      results.push({
-        id: sec.id,
-        title: sec.text,
-        level: sec.level,
-        snippet: makeSnippet(sec.body, words),
-        words: words
-      });
+    });
+
+    var textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+    var hits = [];
+    for (var i = 0; i < textNodes.length; i++) {
+      if (hits.length >= DOC_HIT_LIMIT) break;
+      var node = textNodes[i];
+      if (!node.parentNode) continue;
+      var text = node.nodeValue;
+      re.lastIndex = 0;
+      if (!re.test(text)) continue;
+      re.lastIndex = 0;
+
+      var frag = document.createDocumentFragment();
+      var last = 0;
+      var m;
+      while ((m = re.exec(text)) && hits.length < DOC_HIT_LIMIT) {
+        if (m.index > last) {
+          frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        }
+        var mark = document.createElement('mark');
+        var hitId = 'ph-hit-' + hits.length;
+        mark.className = 'ph-doc-mark';
+        mark.id = hitId;
+        mark.textContent = m[0];
+        frag.appendChild(mark);
+        hits.push({
+          id: hitId,
+          title: nearestSectionTitle(node.parentNode),
+          snippet: makeSnippetAround(text, m.index, m[0].length),
+          words: words
+        });
+        last = m.index + m[0].length;
+      }
+      if (last < text.length) {
+        frag.appendChild(document.createTextNode(text.slice(last)));
+      }
+      node.parentNode.replaceChild(frag, node);
     }
-    return results;
+
+    // После wrap заголовки могли попасть внутрь mark — освежим title по id метки
+    for (var h = 0; h < hits.length; h++) {
+      var el = document.getElementById(hits[h].id);
+      if (el) hits[h].title = nearestSectionTitle(el);
+    }
+    return hits;
+  }
+
+  function focusDocHit(el) {
+    if (!el) return;
+    var prev = document.querySelectorAll('mark.ph-doc-mark--focus');
+    for (var i = 0; i < prev.length; i++) {
+      prev[i].classList.remove('ph-doc-mark--focus');
+    }
+    el.classList.add('ph-doc-mark--focus');
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    clearTimeout(tocFocusTimer);
+    tocFocusTimer = setTimeout(function () {
+      el.classList.remove('ph-doc-mark--focus');
+    }, 1600);
   }
 
   function ensureTocUi() {
@@ -622,13 +745,13 @@
     tocRoot = document.createElement('aside');
     tocRoot.id = 'ph-sidetoc';
     tocRoot.className = 'ph-sidetoc';
-    tocRoot.setAttribute('aria-label', 'Содержание документа');
+    tocRoot.setAttribute('aria-label', 'Навигация по документу');
     tocRoot.innerHTML =
       '<div class="ph-sidetoc__head">' +
       '<div class="ph-sidetoc__title-wrap">' +
-      '<span class="ph-sidetoc__title">Содержание</span>' +
+      '<span class="ph-sidetoc__title">Навигация</span>' +
       '</div>' +
-      '<button type="button" class="ph-sidetoc__close" title="Скрыть" aria-label="Скрыть содержание">\u2715</button>' +
+      '<button type="button" class="ph-sidetoc__close" title="Скрыть" aria-label="Скрыть навигацию">\u2715</button>' +
       '</div>' +
       '<div class="ph-sidetoc__search-wrap">' +
       '<label class="ph-sidetoc__search">' +
@@ -637,6 +760,12 @@
       '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>' +
       '</svg>' +
       '<input class="ph-sidetoc__search-input" type="search" placeholder="Поиск по документу" autocomplete="off" spellcheck="false" />' +
+      '<button type="button" class="ph-sidetoc__search-clear" hidden title="Очистить" aria-label="Очистить поиск">' +
+      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>' +
+      '</svg>' +
+      '</button>' +
       '</label>' +
       '<div class="ph-sidetoc__meta" hidden></div>' +
       '</div>' +
@@ -644,15 +773,22 @@
     tocList = tocRoot.querySelector('.ph-sidetoc__list');
     tocSearch = tocRoot.querySelector('.ph-sidetoc__search-input');
     tocSearchWrap = tocRoot.querySelector('.ph-sidetoc__search');
+    tocSearchClear = tocRoot.querySelector('.ph-sidetoc__search-clear');
     tocMeta = tocRoot.querySelector('.ph-sidetoc__meta');
 
     tocRoot.querySelector('.ph-sidetoc__close').addEventListener('click', function () {
       setTocOpen(false);
     });
 
+    function syncSearchClear() {
+      var filled = !!(tocSearch && tocSearch.value.length > 0);
+      if (tocSearchWrap) tocSearchWrap.classList.toggle('is-filled', filled);
+      if (tocSearchClear) tocSearchClear.hidden = !filled;
+    }
+
     tocSearch.addEventListener('input', function () {
       tocQuery = tocSearch.value;
-      tocSearchWrap.classList.toggle('is-filled', tocQuery.trim().length > 0);
+      syncSearchClear();
       clearTimeout(tocSearchTimer);
       tocSearchTimer = setTimeout(renderTocList, 120);
     });
@@ -662,20 +798,56 @@
     tocSearch.addEventListener('blur', function () {
       tocSearchWrap.classList.remove('is-focused');
     });
+    tocSearchClear.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      tocSearch.value = '';
+      tocQuery = '';
+      syncSearchClear();
+      renderTocList();
+      tocSearch.focus();
+    });
 
     tocList.addEventListener('click', function (e) {
+      var toggleBtn = e.target.closest(
+        '.ph-sidetoc__chevron, .ph-sidetoc__peck--toggle'
+      );
+      if (toggleBtn && tocList.contains(toggleBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        var item = toggleBtn.closest('.ph-sidetoc__item');
+        if (!item) return;
+        var cid = item.getAttribute('data-id') || '';
+        var next = !item.classList.contains('is-collapsed');
+        item.classList.toggle('is-collapsed', next);
+        toggleBtn.setAttribute('aria-expanded', next ? 'false' : 'true');
+        toggleBtn.title = next ? 'Развернуть' : 'Свернуть';
+        if (cid) setTocCollapsed(cid, next);
+        return;
+      }
+
       var a = e.target.closest('a');
       if (!a || !tocList.contains(a)) return;
       e.preventDefault();
       var id = (a.getAttribute('href') || '').replace(/^#/, '');
       var target = id && document.getElementById(id);
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        tocList.querySelectorAll('a').forEach(function (x) {
-          x.classList.toggle('active', x === a);
-        });
-        if (a.blur) a.blur();
+      if (!target) return;
+      // Только один active: ближайший item, не родители через contains()
+      var selectedItem = a.closest('.ph-sidetoc__item');
+      var items = tocList.querySelectorAll('.ph-sidetoc__item');
+      for (var i = 0; i < items.length; i++) {
+        items[i].classList.toggle('is-selected', items[i] === selectedItem);
       }
+      var links = tocList.querySelectorAll('a');
+      for (var j = 0; j < links.length; j++) {
+        links[j].classList.toggle('active', links[j] === a);
+      }
+      if (target.classList.contains('ph-doc-mark')) {
+        focusDocHit(target);
+      } else {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      if (a.blur) a.blur();
     });
 
     document.body.appendChild(tocBtn);
@@ -686,17 +858,23 @@
   function renderTocList() {
     if (!tocList) return;
     var q = (tocSearch && tocSearch.value) || tocQuery || '';
-    var results = searchSections(q);
+    var words = queryWords(q);
+    var results = words.length ? applyDocSearch(q) : (clearDocHighlights(), null);
 
     if (results && results.length) {
       tocMeta.hidden = false;
-      tocMeta.textContent = 'Найдено разделов: ' + results.length;
+      tocMeta.textContent =
+        'Найдено: ' +
+        results.length +
+        (results.length >= DOC_HIT_LIMIT ? '+' : '');
       var html = '';
       for (var i = 0; i < results.length; i++) {
         var r = results[i];
         html +=
           '<li class="ph-sidetoc__item ph-sidetoc__item--result">' +
           '<a href="#' +
+          r.id +
+          '" data-ph-hit="' +
           r.id +
           '">' +
           '<span class="ph-sidetoc__result-title">' +
@@ -713,7 +891,7 @@
       return;
     }
 
-    // Пустой запрос или «ничего не найдено» — показываем полное содержание.
+    // Пустой запрос или «ничего не найдено» — полное оглавление по заголовкам.
     if (results && !results.length) {
       tocMeta.hidden = false;
       tocMeta.textContent = 'Ничего не найдено';
@@ -724,35 +902,174 @@
     renderTocHeadings();
   }
 
+  function buildTocTree(items) {
+    var roots = [];
+    var stack = [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var node = {
+        id: it.id,
+        text: it.text,
+        level: it.level,
+        children: []
+      };
+      while (stack.length && stack[stack.length - 1].level >= node.level) {
+        stack.pop();
+      }
+      if (!stack.length) roots.push(node);
+      else stack[stack.length - 1].children.push(node);
+      stack.push(node);
+    }
+    return roots;
+  }
+
+  function chevronSvg() {
+    return (
+      '<svg viewBox="0 0 16 16" width="10" height="10" fill="none" ' +
+      'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" ' +
+      'stroke-linejoin="round" aria-hidden="true">' +
+      '<polyline points="4 6 8 10 12 6"/>' +
+      '</svg>'
+    );
+  }
+
+  function renderTocBody(node, hasKids, badge) {
+    var html =
+      '<div class="ph-sidetoc__body">' +
+      '<a class="ph-sidetoc__link" href="#' +
+      escHtml(node.id) +
+      '">' +
+      '<span class="ph-sidetoc__label">' +
+      escHtml(node.text) +
+      '</span>' +
+      '</a>';
+    if (hasKids) {
+      html +=
+        '<span class="ph-sidetoc__badge" title="Подразделов: ' +
+        badge +
+        '">' +
+        badge +
+        '</span>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderTocNode(node, depth) {
+    depth = depth || 0;
+    var kids = node.children || [];
+    var hasKids = kids.length > 0;
+    var badge = hasKids ? kids.length : 0;
+    var collapsed = hasKids && isTocCollapsed(node.id);
+    var level = Math.min(6, Math.max(1, node.level || 1));
+    // По глубине дерева (не по H1/H2/H3):
+    // 0 — arrow; 1 — кружок на вертикали под arrow; 2+ — L-ветка без кружка
+    var kind = depth === 0 ? 'root' : depth === 1 ? 'sub' : 'deep';
+    var html =
+      '<li class="ph-sidetoc__item ph-sidetoc__item--h' +
+      level +
+      ' ph-sidetoc__item--' +
+      kind +
+      (hasKids ? ' ph-sidetoc__item--branch' : ' ph-sidetoc__item--leaf') +
+      (collapsed ? ' is-collapsed' : '') +
+      '" data-id="' +
+      escHtml(node.id) +
+      '">';
+
+    if (kind === 'deep') {
+      // 3-й уровень: L от общей вертикали, без peck
+      html += '<div class="ph-sidetoc__row ph-sidetoc__row--deep">';
+      html += renderTocBody(node, hasKids, badge);
+      html += '</div>';
+    } else if (kind === 'sub') {
+      html += '<div class="ph-sidetoc__row ph-sidetoc__row--sub">';
+      if (hasKids) {
+        html +=
+          '<button type="button" class="ph-sidetoc__peck ph-sidetoc__peck--toggle" aria-expanded="' +
+          (collapsed ? 'false' : 'true') +
+          '" title="' +
+          (collapsed ? 'Развернуть' : 'Свернуть') +
+          '" aria-label="' +
+          (collapsed ? 'Развернуть раздел' : 'Свернуть раздел') +
+          '"></button>';
+      } else {
+        html += '<span class="ph-sidetoc__peck" aria-hidden="true"></span>';
+      }
+      html += renderTocBody(node, hasKids, badge);
+      html += '</div>';
+    } else {
+      html += '<div class="ph-sidetoc__row ph-sidetoc__row--root">';
+      if (hasKids) {
+        html +=
+          '<button type="button" class="ph-sidetoc__chevron" aria-expanded="' +
+          (collapsed ? 'false' : 'true') +
+          '" title="' +
+          (collapsed ? 'Развернуть' : 'Свернуть') +
+          '" aria-label="' +
+          (collapsed ? 'Развернуть раздел' : 'Свернуть раздел') +
+          '">' +
+          chevronSvg() +
+          '</button>';
+      } else {
+        html +=
+          '<span class="ph-sidetoc__chevron-spacer" aria-hidden="true"></span>';
+      }
+      html +=
+        '<a class="ph-sidetoc__link" href="#' +
+        escHtml(node.id) +
+        '">' +
+        '<span class="ph-sidetoc__label">' +
+        escHtml(node.text) +
+        '</span>' +
+        '</a>';
+      if (hasKids) {
+        html +=
+          '<div class="ph-sidetoc__trail">' +
+          '<span class="ph-sidetoc__badge" title="Подразделов: ' +
+          badge +
+          '">' +
+          badge +
+          '</span>' +
+          '</div>';
+      }
+      html += '</div>';
+    }
+
+    if (hasKids) {
+      // Дети корня — на общей вертикали; вложенные deep — без новой оси
+      var childListClass =
+        depth === 0
+          ? 'ph-sidetoc__children ph-sidetoc__children--spine'
+          : 'ph-sidetoc__children ph-sidetoc__children--nested';
+      html += '<ul class="' + childListClass + '">';
+      for (var i = 0; i < kids.length; i++) {
+        html += renderTocNode(kids[i], depth + 1);
+      }
+      html += '</ul>';
+    }
+    html += '</li>';
+    return html;
+  }
+
   function renderTocHeadings() {
     var items = tocSections;
     if (!items.length) {
       tocList.innerHTML = '';
       return;
     }
-    var min = 6;
-    for (var j = 0; j < items.length; j++) {
-      if (items[j].level < min) min = items[j].level;
-    }
+    loadTocCollapsed();
+    var tree = buildTocTree(items);
     var html2 = '';
-    for (var k = 0; k < items.length; k++) {
-      var it = items[k];
-      var depth = Math.max(0, it.level - min);
-      html2 +=
-        '<li class="ph-sidetoc__item ph-sidetoc__item--' +
-        depth +
-        '">' +
-        '<a href="#' +
-        it.id +
-        '">' +
-        escHtml(it.text) +
-        '</a></li>';
+    for (var k = 0; k < tree.length; k++) {
+      html2 += renderTocNode(tree[k], 0);
     }
     tocList.innerHTML = html2;
   }
 
   function rebuildToc() {
     ensureTocUi();
+    // Снять прошлые mark, чтобы collectSections видел чистый текст.
+    clearDocHighlights();
     tocSections = collectSections();
     tocBtn.hidden = tocSections.length < 2;
     if (tocSections.length < 2) {
@@ -761,6 +1078,7 @@
       if (tocSearch) tocSearch.value = '';
       tocQuery = '';
       if (tocSearchWrap) tocSearchWrap.classList.remove('is-filled');
+      if (tocSearchClear) tocSearchClear.hidden = true;
       if (tocMeta) {
         tocMeta.hidden = true;
         tocMeta.textContent = '';
@@ -769,7 +1087,15 @@
     }
     if (tocSearch && tocQuery && tocSearch.value !== tocQuery) {
       tocSearch.value = tocQuery;
-      tocSearchWrap.classList.toggle('is-filled', tocQuery.trim().length > 0);
+    }
+    if (tocSearchWrap) {
+      tocSearchWrap.classList.toggle(
+        'is-filled',
+        !!(tocSearch && tocSearch.value.length)
+      );
+    }
+    if (tocSearchClear) {
+      tocSearchClear.hidden = !(tocSearch && tocSearch.value.length);
     }
     renderTocList();
     setTocOpen(tocIsOpen());

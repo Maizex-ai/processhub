@@ -3,7 +3,7 @@
   "displayName": "ProcessHub Markdown Preview",
   "description": "Оформление встроенного превью Markdown под стандарты ProcessHub: YAML-панель свойств, тёмные PlantUML/Mermaid с зумом, карточки TOC, стилизованные таблицы и ссылки.",
   "publisher": "processhub",
-  "version": "0.11.5",
+  "version": "0.11.26",
   "engines": {
     "vscode": "^1.70.0"
   },
@@ -85,6 +85,21 @@
           "enum": ["dark", "light", "auto"],
           "default": "dark",
           "description": "Тема диаграмм PlantUML/Mermaid в превью. dark — всегда тёмная (рекомендуется для документов ProcessHub); light — всегда светлая; auto — как тема редактора."
+        },
+        "processhubMdPreview.followActiveEditor": {
+          "type": "boolean",
+          "default": true,
+          "description": "После Open ProcessHub Preview переключать превью на активный .md при выборе файла в Explorer или смене вкладки редактора."
+        },
+        "processhubMdPreview.lockPreview": {
+          "type": "boolean",
+          "default": false,
+          "description": "Закрепить превью за открытым файлом (locked). Не следует за Explorer/вкладками. При true followActiveEditor не применяется."
+        },
+        "processhubMdPreview.preferPreviewFocus": {
+          "type": "boolean",
+          "default": true,
+          "description": "При открытии .md из Explorer отдавать фокус вкладке Preview. Ручное переключение вкладок Preview ↔ .md не блокируется."
         }
       }
     }

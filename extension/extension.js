@@ -580,25 +580,198 @@ function resolveMarkdownUri(uri) {
   return target || null;
 }
 
-// Locked preview: не следует за курсором/другой вкладкой — удобно читать длинные UC.
-// Обычный preview оставляем как запасной путь.
-// Скролл-sync с редактором НЕ пишем в settings.json — только клиентский
-// перехват в media/preview.js (контур расширения, чужие настройки не трогаем).
-async function openMarkdownPreview(uri) {
-  if (!vscode) return;
-  const target = resolveMarkdownUri(uri);
-  const cmds = [
-    'markdown.showLockedPreviewToSide',
-    'markdown.showPreviewToSide',
-  ];
+// Unlocked preview следует за активным .md.
+// Приоритет фокуса Preview — только при открытии .md из Explorer (новый
+// документ / новая вкладка). Ручной клик по вкладке .md не перехватываем.
+// lockPreview=true → locked. Скролл-sync — только в preview.js.
+let previewSessionActive = false;
+let followInFlight = false;
+let reclaimingFocus = false;
+let lastFollowedUri = '';
+let followTimer = null;
+/** uriKey -> expiry ms — фокус на Preview только после open из Explorer */
+const pendingPreviewFocus = new Map();
+
+function phPreviewConfig(key, fallback) {
+  if (!vscode) return fallback;
+  try {
+    const v = vscode.workspace
+      .getConfiguration('processhubMdPreview')
+      .get(key);
+    return v === undefined || v === null ? fallback : v;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function isMarkdownDocument(doc) {
+  if (!doc) return false;
+  if (doc.languageId === 'markdown') return true;
+  const name = (doc.fileName || (doc.uri && doc.uri.fsPath) || '').toLowerCase();
+  return name.endsWith('.md') || name.endsWith('.markdown');
+}
+
+function isMarkdownEditor(editor) {
+  return !!(editor && isMarkdownDocument(editor.document));
+}
+
+function isMarkdownPreviewTab(tab) {
+  if (!tab || !tab.input) return false;
+  const input = tab.input;
+  const viewType = String(input.viewType || '');
+  if (/markdown\.preview/i.test(viewType)) return true;
+  const label = String(tab.label || '');
+  if (/^Preview\b/i.test(label) && input.uri) return true;
+  return false;
+}
+
+function hasMarkdownPreviewTab() {
+  if (!vscode || !vscode.window.tabGroups) return false;
+  try {
+    const groups = vscode.window.tabGroups.all || [];
+    for (let g = 0; g < groups.length; g++) {
+      const tabs = groups[g].tabs || [];
+      for (let t = 0; t < tabs.length; t++) {
+        if (isMarkdownPreviewTab(tabs[t])) return true;
+      }
+    }
+  } catch (e) {
+    /* API недоступен */
+  }
+  return false;
+}
+
+function isPreviewModeActive() {
+  if (previewSessionActive) return true;
+  return hasMarkdownPreviewTab();
+}
+
+function syncPreviewSessionFromTabs() {
+  if (!hasMarkdownPreviewTab()) {
+    previewSessionActive = false;
+    lastFollowedUri = '';
+    pendingPreviewFocus.clear();
+  } else {
+    previewSessionActive = true;
+  }
+}
+
+function markPendingPreviewFocus(uri) {
+  if (!uri || !isPreviewModeActive()) return;
+  pendingPreviewFocus.set(String(uri), Date.now() + 1200);
+}
+
+function consumePendingPreviewFocus(uri) {
+  if (!uri) return false;
+  const key = String(uri);
+  const exp = pendingPreviewFocus.get(key);
+  if (exp == null) return false;
+  pendingPreviewFocus.delete(key);
+  return Date.now() <= exp;
+}
+
+function noteExplorerMarkdownOpen(uri) {
+  if (!uri) return;
+  const scheme = uri.scheme || '';
+  if (scheme && scheme !== 'file' && scheme !== 'vscode-vfs' && scheme !== 'untitled') {
+    return;
+  }
+  markPendingPreviewFocus(uri);
+}
+
+async function runPreviewCommands(cmds, target) {
   for (let i = 0; i < cmds.length; i++) {
     try {
-      if (target) return await vscode.commands.executeCommand(cmds[i], target);
-      return await vscode.commands.executeCommand(cmds[i]);
+      if (target) await vscode.commands.executeCommand(cmds[i], target);
+      else await vscode.commands.executeCommand(cmds[i]);
+      return true;
     } catch (e) {
       /* пробуем следующий вариант */
     }
   }
+  return false;
+}
+
+/** Фокус на Preview только после открытия из Explorer (не при клике по вкладке). */
+async function focusMarkdownPreview(uri) {
+  if (!vscode) return;
+  if (!phPreviewConfig('preferPreviewFocus', true)) return;
+  if (reclaimingFocus) return;
+  reclaimingFocus = true;
+  try {
+    const target = uri || resolveMarkdownUri(null);
+    const ok = await runPreviewCommands(
+      ['markdown.showPreview', 'markdown.showPreviewToSide'],
+      target
+    );
+    if (ok && target) lastFollowedUri = String(target);
+  } finally {
+    setTimeout(() => {
+      reclaimingFocus = false;
+    }, 120);
+  }
+}
+
+async function openMarkdownPreview(uri, opts) {
+  if (!vscode) return;
+  const fromFollow = !!(opts && opts.fromFollow);
+  const target = resolveMarkdownUri(uri);
+  const lock = !!phPreviewConfig('lockPreview', false);
+
+  const cmds =
+    fromFollow && !lock
+      ? ['markdown.showPreview', 'markdown.showPreviewToSide']
+      : lock
+        ? ['markdown.showLockedPreviewToSide', 'markdown.showPreviewToSide']
+        : ['markdown.showPreviewToSide', 'markdown.showLockedPreviewToSide'];
+
+  const ok = await runPreviewCommands(cmds, target);
+  if (ok) {
+    previewSessionActive = true;
+    if (target) lastFollowedUri = String(target);
+    return;
+  }
+  if (!fromFollow) previewSessionActive = false;
+}
+
+async function followActiveMarkdownEditor(editor) {
+  if (!vscode || reclaimingFocus || followInFlight) return;
+  syncPreviewSessionFromTabs();
+  if (!isPreviewModeActive()) return;
+  if (phPreviewConfig('lockPreview', false)) return;
+  if (!phPreviewConfig('followActiveEditor', true)) return;
+  if (!isMarkdownEditor(editor)) return;
+
+  const uri = editor.document.uri;
+  const key = String(uri);
+  const fromExplorer = consumePendingPreviewFocus(uri);
+  const preferFocus = phPreviewConfig('preferPreviewFocus', true);
+
+  followInFlight = true;
+  try {
+    if (fromExplorer && preferFocus) {
+      // Explorer открыл/создал вкладку .md — обновить Preview и отдать ему фокус.
+      lastFollowedUri = key;
+      await openMarkdownPreview(uri, { fromFollow: true });
+      return;
+    }
+    if (key !== lastFollowedUri) {
+      // Смена файла кликом по уже открытой вкладке: содержимое follow'ит unlocked
+      // preview сам; showPreview не зовём — иначе украдём фокус у raw .md.
+      lastFollowedUri = key;
+    }
+    // Клик по вкладке Preview ↔ .md того же файла — не вмешиваемся.
+  } finally {
+    followInFlight = false;
+  }
+}
+
+function scheduleFollowActiveEditor(editor) {
+  if (followTimer) clearTimeout(followTimer);
+  followTimer = setTimeout(() => {
+    followTimer = null;
+    followActiveMarkdownEditor(editor);
+  }, 70);
 }
 
 function activate(context) {
@@ -607,8 +780,31 @@ function activate(context) {
       vscode.commands.registerCommand(
         'processhubMdPreview.openPreview',
         openMarkdownPreview
-      )
+      ),
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        scheduleFollowActiveEditor(editor);
+      }),
+      vscode.workspace.onDidOpenTextDocument((doc) => {
+        if (!isMarkdownDocument(doc)) return;
+        noteExplorerMarkdownOpen(doc.uri);
+      })
     );
+    if (vscode.window.tabGroups && vscode.window.tabGroups.onDidChangeTabs) {
+      context.subscriptions.push(
+        vscode.window.tabGroups.onDidChangeTabs((e) => {
+          syncPreviewSessionFromTabs();
+          const opened = (e && e.opened) || [];
+          for (let i = 0; i < opened.length; i++) {
+            const tab = opened[i];
+            if (isMarkdownPreviewTab(tab)) continue;
+            const input = tab.input;
+            if (input && input.uri && isMarkdownDocument({ uri: input.uri, languageId: '', fileName: input.uri.fsPath || '' })) {
+              noteExplorerMarkdownOpen(input.uri);
+            }
+          }
+        })
+      );
+    }
   }
   return {
     extendMarkdownIt(md) {

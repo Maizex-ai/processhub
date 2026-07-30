@@ -6,6 +6,9 @@
    Серые rgba(128,128,128,…) читаются на любом фоне и остаются литералами. */
 
 body {
+  /* Навигация (sidebar): compact по умолчанию; max при широком превью */
+  --ph-toc-width: 260px;
+  --ph-toc-gap: 8px;
   /* текст */
   --ph-text: rgba(246, 246, 246, 0.8);
   --ph-heading: rgba(246, 246, 246, 0.92);
@@ -17,9 +20,10 @@ body {
   --ph-link-bg: rgba(246, 246, 246, 0.06);
   --ph-link-bg-hover: rgba(246, 246, 246, 0.1);
   --ph-link-fg: rgba(0, 212, 146, 0.92);
-  /* TOC */
-  --ph-toc-link: #b9c0cc;
-  --ph-toc-link-hover: #e6eaf2;
+  /* TOC (in-document карточка «Содержание») */
+  --ph-toc-title: rgba(246, 246, 246, 0.88);
+  --ph-toc-link: rgba(246, 246, 246, 0.72);
+  --ph-toc-link-hover: rgba(246, 246, 246, 0.88);
   /* диаграммы */
   --ph-diag-bg: #1e1e1e;
   --ph-diag-text: #d4d4d4;
@@ -45,8 +49,9 @@ body.vscode-high-contrast-light {
   --ph-link-bg: rgba(0, 0, 0, 0.045);
   --ph-link-bg-hover: rgba(0, 0, 0, 0.08);
   --ph-link-fg: #0b7a5a;
-  --ph-toc-link: #4b5563;
-  --ph-toc-link-hover: #111827;
+  --ph-toc-title: rgba(0, 0, 0, 0.88);
+  --ph-toc-link: rgba(0, 0, 0, 0.72);
+  --ph-toc-link-hover: rgba(0, 0, 0, 0.88);
   --ph-diag-bg: #ffffff;
   --ph-diag-text: #333333;
   --ph-badge-gray: #5b6472;
@@ -349,7 +354,7 @@ a[data-href*=".md#"]::before {
   --doc-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3Cline x1='16' y1='13' x2='8' y2='13'/%3E%3Cline x1='16' y1='17' x2='8' y2='17'/%3E%3Cline x1='10' y1='9' x2='8' y2='9'/%3E%3C/svg%3E");
 }
 
-/* --- Карточка TOC --- */
+/* --- Карточка TOC (в документе, не sidebar) --- */
 .doc-toc {
   display: block;
   background: rgba(128, 128, 128, 0.08);
@@ -358,12 +363,15 @@ a[data-href*=".md#"]::before {
   padding: 14px 20px 14px 18px;
   margin: 18px 0 26px;
   font-size: 10.5pt;
+  font-family: inherit;
+  color: var(--ph-toc-link);
   backdrop-filter: blur(2px);
 }
 .doc-toc .doc-toc-title {
-  color: var(--ph-muted);
+  color: var(--ph-toc-title);
   font-size: 9pt;
   font-weight: 600;
+  font-family: inherit;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   border: none;
@@ -383,32 +391,46 @@ a[data-href*=".md#"]::before {
 }
 .doc-toc li {
   position: relative;
-  padding-left: 14px;
+  padding-left: 0;
   margin: 4px 0;
   list-style: none;
 }
-.doc-toc li::before {
-  content: "";
-  position: absolute;
-  left: 2px;
-  top: 0.72em;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: rgba(140, 148, 166, 0.7);
+.doc-toc li::before,
+.doc-toc li::marker {
+  content: none;
+  display: none;
 }
 .doc-toc a {
   color: var(--ph-toc-link);
   text-decoration: none;
+  border: none;
   border-radius: 5px;
   padding: 2px 6px;
   display: inline-block;
   background: none;
   font-weight: 400;
+  font-family: inherit;
+  outline: none;
+  box-shadow: none;
   transition: background 0.12s ease, color 0.12s ease;
 }
 .doc-toc a::before { display: none; }
 .doc-toc a:hover {
+  color: var(--ph-toc-link-hover);
+  background: rgba(128, 128, 128, 0.16);
+}
+.doc-toc a:focus,
+.doc-toc a:focus-visible,
+.doc-toc a:active,
+.doc-toc a:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none;
+  background: none;
+  color: var(--ph-toc-link);
+}
+.doc-toc a:hover:focus,
+.doc-toc a:hover:focus-visible {
   color: var(--ph-toc-link-hover);
   background: rgba(128, 128, 128, 0.16);
 }
@@ -418,21 +440,12 @@ a[data-href*=".md#"]::before {
 }
 .doc-toc .doc-toc-para a {
   position: relative;
-  padding-left: 14px;
+  padding-left: 6px;
   margin: 2px 0;
 }
 .doc-toc .doc-toc-para a::before {
-  content: "";
-  display: block;
-  position: absolute;
-  left: 2px;
-  top: 0.72em;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: rgba(140, 148, 166, 0.7);
-  -webkit-mask: none;
-  mask: none;
+  content: none;
+  display: none;
 }
 
 /* --- Инлайн-код: жёлтый текст на лёгкой плашке --- */
@@ -702,12 +715,12 @@ body.ph-toc-open .ph-sidetoc-toggle {
 }
 .ph-sidetoc {
   position: fixed;
-  left: 8px;
-  top: 8px;
-  bottom: 8px;
+  left: var(--ph-toc-gap);
+  top: var(--ph-toc-gap);
+  bottom: var(--ph-toc-gap);
   z-index: 8990;
-  width: 260px;
-  min-width: 260px;
+  width: var(--ph-toc-width);
+  min-width: var(--ph-toc-width);
   display: flex;
   flex-direction: column;
   background: rgba(246, 246, 246, 0.045);
@@ -766,10 +779,31 @@ body.ph-toc-open .ph-sidetoc-toggle {
   color: #fff;
 }
 .ph-sidetoc__search-wrap {
+  position: relative;
   flex: none;
   margin: 8px 8px 0;
-  padding: 0 0 8px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.16);
+  padding: 0 0 9px; /* 8px + 1px divider */
+  border-bottom: none;
+}
+/* Divider: тот же профиль, что в макете (#F6F6F6 @ 0/24/44/24/0),
+   но ослаблен — на glass/backdrop в webview 44% даёт слишком яркую полосу. */
+.ph-sidetoc__search-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0.45;
+  background: linear-gradient(
+    90deg,
+    rgba(246, 246, 246, 0) 0%,
+    rgba(246, 246, 246, 0.24) 24%,
+    rgba(246, 246, 246, 0.44) 50%,
+    rgba(246, 246, 246, 0.24) 76%,
+    rgba(246, 246, 246, 0) 100%
+  );
 }
 .ph-sidetoc__search {
   position: relative;
@@ -777,11 +811,15 @@ body.ph-toc-open .ph-sidetoc-toggle {
   align-items: center;
   height: 40px;
   box-sizing: border-box;
+  /* слева: 12 + 16(icon) + 8 = 36; справа зеркально при is-filled */
   padding: 0 12px 0 36px;
   background: rgba(3, 3, 3, 0.16);
   border: 1px solid rgba(246, 246, 246, 0.06);
   border-radius: 6px;
   transition: border-color 0.12s ease;
+}
+.ph-sidetoc__search.is-filled {
+  padding-right: 36px;
 }
 .ph-sidetoc__search:hover {
   border-color: rgba(246, 246, 246, 0.08);
@@ -798,6 +836,37 @@ body.ph-toc-open .ph-sidetoc-toggle {
   color: rgba(246, 246, 246, 0.72);
   pointer-events: none;
   flex: none;
+}
+.ph-sidetoc__search-clear {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(246, 246, 246, 0.72);
+  cursor: pointer;
+  flex: none;
+  line-height: 0;
+}
+.ph-sidetoc__search-clear[hidden] {
+  display: none !important;
+}
+.ph-sidetoc__search-clear:hover {
+  color: rgba(246, 246, 246, 0.95);
+}
+.ph-sidetoc__search-clear:focus,
+.ph-sidetoc__search-clear:focus-visible {
+  outline: none;
+  color: rgba(246, 246, 246, 0.95);
 }
 .ph-sidetoc__search-input {
   width: 100%;
@@ -852,13 +921,31 @@ body.ph-toc-open .ph-sidetoc-toggle {
   flex-direction: column;
   gap: 2px;
 }
-.ph-sidetoc__item a {
+.ph-sidetoc__item {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ph-sidetoc__row {
   display: flex;
   align-items: center;
+  gap: 8px; /* arrow ↔ текст */
+  min-height: 40px;
+  border-radius: 6px;
+  transition: background 0.1s ease;
+}
+.ph-sidetoc__row--root:hover {
+  background: rgba(246, 246, 246, 0.045);
+}
+.ph-sidetoc__link {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
   box-sizing: border-box;
-  height: 40px;
-  padding: 0 12px;
-  color: rgba(246, 246, 246, 0.76);
+  min-height: 40px;
+  padding: 0;
+  color: rgba(246, 246, 246, 0.92);
   text-decoration: none;
   font-size: 13px;
   line-height: 1.3;
@@ -867,30 +954,229 @@ body.ph-toc-open .ph-sidetoc-toggle {
   border-radius: 4px;
   outline: none;
   box-shadow: none;
-  transition: background 0.1s ease, color 0.1s ease;
-  word-break: break-word;
 }
-.ph-sidetoc__item a:hover {
-  background: rgba(246, 246, 246, 0.045);
-  color: rgba(246, 246, 246, 0.76);
-}
-.ph-sidetoc__item a:focus,
-.ph-sidetoc__item a:focus-visible,
-.ph-sidetoc__item a:active,
-.ph-sidetoc__item a.active {
+.ph-sidetoc__link:hover,
+.ph-sidetoc__link:focus,
+.ph-sidetoc__link:focus-visible,
+.ph-sidetoc__link:active {
   outline: none;
   box-shadow: none;
+  color: inherit;
 }
-.ph-sidetoc__item a.active {
-  background: rgba(246, 246, 246, 0.065);
+.ph-sidetoc__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ph-sidetoc__trail {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding-right: 6px;
+}
+.ph-sidetoc__badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border: 1px solid rgba(246, 246, 246, 0.28);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: rgba(246, 246, 246, 0.88);
+  background: transparent;
+}
+/* Leading arrow (root): up = раскрыто, down = свёрнуто */
+.ph-sidetoc__chevron {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  margin: 0 0 0 6px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(246, 246, 246, 0.88);
+  cursor: pointer;
+  line-height: 0;
+  transform: rotate(180deg);
+}
+.ph-sidetoc__chevron:hover {
+  color: #fff;
+  background: transparent;
+}
+.ph-sidetoc__chevron:focus,
+.ph-sidetoc__chevron:focus-visible {
+  outline: none;
+}
+.ph-sidetoc__item.is-collapsed > .ph-sidetoc__row .ph-sidetoc__chevron {
+  transform: rotate(0deg);
+}
+.ph-sidetoc__chevron-spacer {
+  flex: none;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  margin: 0 0 0 6px;
+}
+
+/*
+ * Вертикальный ритм: ось pecking = центр arrow.
+ * chevron: margin-left 6px + width 20px → центр 16px от края row.
+ * ul.spine начинается с left:16px, линия в left:0 (центр оси).
+ */
+.ph-sidetoc__children {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ph-sidetoc__children--spine {
+  margin-left: 16px; /* = центр chevron */
+}
+.ph-sidetoc__children--spine::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: rgba(246, 246, 246, 0.28);
+  pointer-events: none;
+}
+/* вложенный список (3-й уровень) — та же ось, без второй линии */
+.ph-sidetoc__children--nested {
+  margin-left: 0;
+  padding-left: 0;
+}
+.ph-sidetoc__children--nested::before {
+  display: none;
+}
+.ph-sidetoc__item.is-collapsed > .ph-sidetoc__children {
+  display: none;
+}
+
+/* --- depth 1: кружок на оси + body --- */
+.ph-sidetoc__row--sub {
+  position: relative;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 0 0 12px; /* от оси до текста */
+  background: transparent;
+}
+.ph-sidetoc__peck {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid rgba(246, 246, 246, 0.45);
+  border-radius: 50%;
+  background: #141414;
+  color: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+button.ph-sidetoc__peck {
+  cursor: pointer;
+}
+button.ph-sidetoc__peck:focus,
+button.ph-sidetoc__peck:focus-visible {
+  outline: none;
+}
+.ph-sidetoc__item--sub.is-selected > .ph-sidetoc__row--sub .ph-sidetoc__peck {
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  border-color: rgba(246, 246, 246, 0.75);
+  background: #e8e8e8;
+  box-shadow: 0 0 0 3px rgba(20, 20, 20, 0.95);
+}
+.ph-sidetoc__body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 6px;
+  box-sizing: border-box;
+  color: rgba(246, 246, 246, 0.72);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.ph-sidetoc__body .ph-sidetoc__link {
+  min-height: 36px;
+  color: inherit;
+}
+.ph-sidetoc__row--sub:hover .ph-sidetoc__body {
+  background: rgba(246, 246, 246, 0.045);
+}
+.ph-sidetoc__item--sub.is-selected > .ph-sidetoc__row--sub .ph-sidetoc__body {
+  background: rgba(246, 246, 246, 0.08);
   color: rgba(246, 246, 246, 0.92);
 }
-.ph-sidetoc__item--1 a { padding-left: 20px; }
-.ph-sidetoc__item--2 a { padding-left: 28px; }
-.ph-sidetoc__item--3 a { padding-left: 36px; }
-.ph-sidetoc__item--4 a,
-.ph-sidetoc__item--5 a { padding-left: 44px; }
-.ph-sidetoc__item--result a {
+.ph-sidetoc__item--root.is-selected > .ph-sidetoc__row--root {
+  background: rgba(246, 246, 246, 0.065);
+}
+
+/* --- depth 2+: L-ветка от той же оси, без кружка, текст глубже --- */
+.ph-sidetoc__item--deep {
+  position: relative;
+}
+.ph-sidetoc__item--deep::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 20px;
+  height: 1px;
+  transform: translateY(-50%);
+  background: rgba(246, 246, 246, 0.28);
+  pointer-events: none;
+}
+.ph-sidetoc__row--deep {
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 0 0 28px; /* глубже, чем depth 1 */
+  background: transparent;
+}
+.ph-sidetoc__item--deep > .ph-sidetoc__row--deep .ph-sidetoc__body {
+  color: rgba(246, 246, 246, 0.56);
+}
+.ph-sidetoc__item--deep > .ph-sidetoc__row--deep:hover .ph-sidetoc__body {
+  background: rgba(246, 246, 246, 0.045);
+}
+.ph-sidetoc__item--deep.is-selected > .ph-sidetoc__row--deep .ph-sidetoc__body {
+  background: rgba(246, 246, 246, 0.08);
+  color: rgba(246, 246, 246, 0.92);
+}
+/* search results keep the previous stacked card look */
+.ph-sidetoc__item--result > a,
+.ph-sidetoc__item--result .ph-sidetoc__link {
+  display: flex;
   height: auto;
   min-height: 40px;
   flex-direction: column;
@@ -898,6 +1184,16 @@ body.ph-toc-open .ph-sidetoc-toggle {
   justify-content: center;
   gap: 4px;
   padding: 8px 12px;
+  color: rgba(246, 246, 246, 0.76);
+}
+.ph-sidetoc__item--result > a:hover,
+.ph-sidetoc__item--result .ph-sidetoc__link:hover {
+  background: rgba(246, 246, 246, 0.045);
+}
+.ph-sidetoc__item--result > a.active,
+.ph-sidetoc__item--result .ph-sidetoc__link.active {
+  background: rgba(246, 246, 246, 0.065);
+  color: rgba(246, 246, 246, 0.92);
 }
 .ph-sidetoc__result-title {
   font-size: 13px;
@@ -915,10 +1211,25 @@ body.ph-toc-open .ph-sidetoc-toggle {
   color: rgba(246, 246, 246, 0.72);
 }
 .ph-sidetoc__mark {
-  background: rgba(0, 212, 146, 0.22);
-  color: inherit;
+  background: #ffe566;
+  color: #1a1a1a;
   border-radius: 2px;
   padding: 0 1px;
+}
+/* Подсветка совпадений в документе: жёлтый фон + тёмный текст (читаемо в dark) */
+mark.ph-doc-mark {
+  background: #ffe566;
+  color: #1a1a1a;
+  border-radius: 2px;
+  padding: 0 1px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+mark.ph-doc-mark.ph-doc-mark--focus {
+  background: #ffd54f;
+  color: #111;
+  outline: 2px solid rgba(245, 166, 35, 0.85);
+  outline-offset: 1px;
 }
 .ph-sidetoc__empty {
   list-style: none;
@@ -928,8 +1239,17 @@ body.ph-toc-open .ph-sidetoc-toggle {
 }
 /* Сдвигаем контент, чтобы sidebar не перекрывал текст */
 body.ph-toc-open {
-  padding-left: 276px !important; /* 8 + 260 + 8 */
+  padding-left: calc(
+    var(--ph-toc-gap) + var(--ph-toc-width) + var(--ph-toc-gap)
+  ) !important;
   box-sizing: border-box;
+}
+
+/* Широкое превью → max sidebar (+32px) */
+@media (min-width: 1100px) {
+  body {
+    --ph-toc-width: 292px;
+  }
 }
 body.vscode-light .ph-sidetoc-toggle,
 body.vscode-high-contrast-light .ph-sidetoc-toggle {
@@ -942,6 +1262,17 @@ body.vscode-high-contrast-light .ph-sidetoc {
   background: rgba(0, 0, 0, 0.045);
   border-color: rgba(0, 0, 0, 0.1);
 }
+body.vscode-light .ph-sidetoc__search-wrap::after,
+body.vscode-high-contrast-light .ph-sidetoc__search-wrap::after {
+  background: linear-gradient(
+    90deg,
+    rgba(3, 3, 3, 0) 0%,
+    rgba(3, 3, 3, 0.24) 24%,
+    rgba(3, 3, 3, 0.44) 50%,
+    rgba(3, 3, 3, 0.24) 76%,
+    rgba(3, 3, 3, 0) 100%
+  );
+}
 body.vscode-light .ph-sidetoc__title,
 body.vscode-high-contrast-light .ph-sidetoc__title {
   color: rgba(0, 0, 0, 0.88);
@@ -950,17 +1281,89 @@ body.vscode-light .ph-sidetoc__close,
 body.vscode-high-contrast-light .ph-sidetoc__close {
   color: #4b5563;
 }
-body.vscode-light .ph-sidetoc__item a,
-body.vscode-high-contrast-light .ph-sidetoc__item a {
-  color: rgba(0, 0, 0, 0.76);
+body.vscode-light .ph-sidetoc__search-clear,
+body.vscode-high-contrast-light .ph-sidetoc__search-clear {
+  color: rgba(0, 0, 0, 0.55);
 }
-body.vscode-light .ph-sidetoc__item a:hover,
-body.vscode-high-contrast-light .ph-sidetoc__item a:hover {
+body.vscode-light .ph-sidetoc__search-clear:hover,
+body.vscode-high-contrast-light .ph-sidetoc__search-clear:hover {
+  color: rgba(0, 0, 0, 0.85);
+}
+body.vscode-light .ph-sidetoc__row:hover,
+body.vscode-high-contrast-light .ph-sidetoc__row:hover {
   background: rgba(0, 0, 0, 0.045);
+}
+body.vscode-light .ph-sidetoc__link,
+body.vscode-high-contrast-light .ph-sidetoc__link {
+  color: rgba(0, 0, 0, 0.88);
+}
+body.vscode-light .ph-sidetoc__badge,
+body.vscode-high-contrast-light .ph-sidetoc__badge {
+  border-color: rgba(0, 0, 0, 0.22);
+  color: rgba(0, 0, 0, 0.72);
+}
+body.vscode-light .ph-sidetoc__chevron,
+body.vscode-high-contrast-light .ph-sidetoc__chevron {
+  background: transparent;
+  color: rgba(0, 0, 0, 0.72);
+}
+body.vscode-light .ph-sidetoc__chevron:hover,
+body.vscode-high-contrast-light .ph-sidetoc__chevron:hover {
+  background: transparent;
+  color: rgba(0, 0, 0, 0.92);
+}
+body.vscode-light .ph-sidetoc__children--spine::before,
+body.vscode-light .ph-sidetoc__item--deep::after,
+body.vscode-high-contrast-light .ph-sidetoc__children--spine::before,
+body.vscode-high-contrast-light .ph-sidetoc__item--deep::after {
+  background: rgba(0, 0, 0, 0.2);
+}
+body.vscode-light .ph-sidetoc__peck,
+body.vscode-high-contrast-light .ph-sidetoc__peck {
+  border-color: rgba(0, 0, 0, 0.28);
+  background: #fff;
+}
+body.vscode-light .ph-sidetoc__item--sub.is-selected > .ph-sidetoc__row--sub .ph-sidetoc__peck,
+body.vscode-high-contrast-light .ph-sidetoc__item--sub.is-selected > .ph-sidetoc__row--sub .ph-sidetoc__peck {
+  border-color: rgba(0, 0, 0, 0.55);
+  background: #222;
+  box-shadow: 0 0 0 3px #fff;
+}
+body.vscode-light .ph-sidetoc__body,
+body.vscode-high-contrast-light .ph-sidetoc__body {
+  color: rgba(0, 0, 0, 0.72);
+}
+body.vscode-light .ph-sidetoc__row--sub:hover .ph-sidetoc__body,
+body.vscode-light .ph-sidetoc__item--deep > .ph-sidetoc__row--deep:hover .ph-sidetoc__body,
+body.vscode-high-contrast-light .ph-sidetoc__row--sub:hover .ph-sidetoc__body,
+body.vscode-high-contrast-light .ph-sidetoc__item--deep > .ph-sidetoc__row--deep:hover .ph-sidetoc__body {
+  background: rgba(0, 0, 0, 0.045);
+}
+body.vscode-light .ph-sidetoc__item--sub.is-selected > .ph-sidetoc__row--sub .ph-sidetoc__body,
+body.vscode-light .ph-sidetoc__item--deep.is-selected > .ph-sidetoc__row--deep .ph-sidetoc__body,
+body.vscode-high-contrast-light .ph-sidetoc__item--sub.is-selected > .ph-sidetoc__row--sub .ph-sidetoc__body,
+body.vscode-high-contrast-light .ph-sidetoc__item--deep.is-selected > .ph-sidetoc__row--deep .ph-sidetoc__body {
+  background: rgba(0, 0, 0, 0.07);
+  color: rgba(0, 0, 0, 0.9);
+}
+body.vscode-light .ph-sidetoc__item--deep > .ph-sidetoc__row--deep .ph-sidetoc__body,
+body.vscode-high-contrast-light .ph-sidetoc__item--deep > .ph-sidetoc__row--deep .ph-sidetoc__body {
+  color: rgba(0, 0, 0, 0.55);
+}
+body.vscode-light .ph-sidetoc__item--root.is-selected > .ph-sidetoc__row--root,
+body.vscode-high-contrast-light .ph-sidetoc__item--root.is-selected > .ph-sidetoc__row--root {
+  background: rgba(0, 0, 0, 0.06);
+}
+body.vscode-light .ph-sidetoc__item--result > a,
+body.vscode-high-contrast-light .ph-sidetoc__item--result > a {
   color: rgba(0, 0, 0, 0.76);
 }
-body.vscode-light .ph-sidetoc__item a.active,
-body.vscode-high-contrast-light .ph-sidetoc__item a.active {
+body.vscode-light .ph-sidetoc__item--result > a:hover,
+body.vscode-high-contrast-light .ph-sidetoc__item--result > a:hover {
+  background: rgba(0, 0, 0, 0.045);
+}
+body.vscode-light .ph-sidetoc__item--result > a.active,
+body.vscode-high-contrast-light .ph-sidetoc__item--result > a.active {
   background: rgba(0, 0, 0, 0.065);
   color: rgba(0, 0, 0, 0.92);
 }
